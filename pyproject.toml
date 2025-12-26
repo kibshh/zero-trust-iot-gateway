@@ -1,0 +1,37 @@
+[project]
+name        = "zerotrust-gateway"
+version     = "0.1.0"
+license     = "MIT"
+description = "Zero-trust IoT gateway firmware and tooling."
+readme      = "README.md"
+authors     = [
+  {name = "Mihajlo Sasic", email = "sasic.mihajlo25@gmail.com"}
+]
+requires-python = ">=3.11.0,<3.14"
+dependencies = [
+    # No runtime dependencies - Python is for tooling only
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",        # Testing framework
+    "ruff>=0.5.0",          # Fast Python linter and formatter
+    "cryptography>=42.0.0", # Cryptographic primitives for tooling (test key generation, policy signing)
+]
+
+[tool.ruff]
+target-version = "py311"
+exclude = ["generated", "build"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle
+  "F",    # pyflakes/autoflake
+  "I"     # isort
+]
+ignore = [
+  "E501"    # line too long
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
