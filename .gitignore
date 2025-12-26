@@ -2,13 +2,10 @@
 # PlatformIO / ESP-IDF (firmware)
 # ==================================================
 firmware/.pio/
-firmware/.pioenvs/
-firmware/.piolibdeps/
 
 firmware/build/
-firmware/sdkconfig
-firmware/sdkconfig.old
-firmware/sdkconfig.*.old
+firmware/sdkconfig.*
+!firmware/sdkconfig.defaults
 firmware/compile_commands.json
 
 # ==================================================
