@@ -1,0 +1,20 @@
+# Zero-Trust IoT Gateway – Security Baseline
+# (Development / Reversible)
+
+# Logging (safe default)
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y              # Set default log level to INFO
+CONFIG_LOG_DEFAULT_LEVEL=3                   # Numeric log level (3 = INFO)
+
+# Flash integrity
+CONFIG_SPI_FLASH_VERIFY_WRITE=y              # Verify data after writing to flash to detect corruption
+
+# Brownout protection
+CONFIG_ESP32_BROWNOUT_DET=y                  # Enable brownout detector to reset on voltage drops
+CONFIG_ESP32_BROWNOUT_DET_LVL_SEL_7=y        # Set brownout threshold to level 7 (2.51V)
+
+# Crypto acceleration
+CONFIG_MBEDTLS_HARDWARE_AES=y                # Use hardware AES acceleration for faster encryption
+CONFIG_MBEDTLS_HARDWARE_SHA=y                # Use hardware SHA acceleration for faster hashing
+CONFIG_MBEDTLS_HARDWARE_MPI=y                # Use hardware acceleration for big integer operations
+CONFIG_MBEDTLS_HARDWARE_ECC=y                # Use hardware acceleration for elliptic curve cryptography
+CONFIG_MBEDTLS_ECP_RESTARTABLE=y             # Enable restartable ECC operations for better performance

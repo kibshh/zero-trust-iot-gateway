@@ -6,6 +6,7 @@ firmware/.pio/
 firmware/build/
 firmware/sdkconfig.*
 !firmware/sdkconfig.defaults
+!firmware/sdkconfig.dev.defaults
 firmware/compile_commands.json
 
 # ==================================================

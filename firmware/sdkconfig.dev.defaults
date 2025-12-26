@@ -1,0 +1,11 @@
+# Development-only debug features
+
+CONFIG_BOOTLOADER_LOG_LEVEL_INFO=y             # Set bootloader log level to INFO for debugging
+CONFIG_BOOTLOADER_LOG_LEVEL=3                  # Numeric bootloader log level (3 = INFO)
+
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y         # Print panic info to console before rebooting
+CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=5 # Delay 5 seconds before reboot to allow reading panic info
+
+CONFIG_ESP_DEBUG_OCDAWARE=y                    # Make system aware of debugger presence (OCD = On-Chip Debugger)
+CONFIG_ESP_SYSTEM_GDBSTUB=y                    # Enable GDB stub for remote debugging
+CONFIG_ESP_SYSTEM_GDBSTUB_RUNTIME=y            # Allow GDB stub to be enabled at runtime via UART
