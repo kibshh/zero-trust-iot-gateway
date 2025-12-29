@@ -75,6 +75,12 @@ public:
     KeyStatus get_key_status() const { return key_status_; }
     KeyAlgorithm get_key_algorithm() const { return key_algorithm_; }
 
+    // Get device ID from NVS
+    // id_out: Output buffer for device ID
+    // device_id_len: Size of output buffer (must equal DeviceIdSize for safety)
+    // Returns true on success, false if identity is not present, len mismatch, or read fails
+    bool get_device_id(uint8_t* id_out, size_t device_id_len) const;
+
 private:
     IdentityStatus identity_status_;
     KeyStatus key_status_;

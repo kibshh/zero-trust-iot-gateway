@@ -494,5 +494,35 @@ bool IdentityManager::factory_reset()
     return true;
 }
 
+bool IdentityManager::get_device_id(uint8_t* id_out, size_t device_id_len) const
+{
+    // Validate output buffer and length matches expected device ID size
+    if (!id_out || device_id_len != IdentityManager::DeviceIdSize) {
+        return false;
+    }
+
+    // Identity needs to be present to read it
+    if (identity_status_ != IdentityStatus::Present) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(IdentityManager::NvsNamespace, NVS_READONLY, &handle);
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    size_t device_id_size = IdentityManager::DeviceIdSize;
+    error = nvs_get_blob(handle, IdentityManager::NvsKeyDeviceId, id_out, &device_id_size);
+    nvs_close(handle);
+
+    // Verify NVS read succeeded and returned expected size
+    if (error != ESP_OK || device_id_size != IdentityManager::DeviceIdSize) {
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace zerotrust::identity
 
