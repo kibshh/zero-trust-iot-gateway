@@ -1,7 +1,8 @@
 #include "system_state.h"
+
 #include <cstddef>
 
-namespace zerotrust {
+namespace zerotrust::system_state {
 
 namespace {
     
@@ -74,13 +75,13 @@ bool find_transition(SystemState current, SystemEvent event, SystemState& target
 
 bool SystemStateMachine::process_event(SystemEvent event) {
     SystemState target_state;
-    if (!find_transition(this->current_state_, event, target_state)) {
-        this->current_state_ = SystemState::Locked; // Lock in case of invalid transition
+    if (!find_transition(current_state_, event, target_state)) {
+        current_state_ = SystemState::Locked; // Lock in case of invalid transition
         return false;
     }
-    this->current_state_ = target_state;
+    current_state_ = target_state;
     return true;
 }
 
-} // namespace zerotrust
+} // namespace zerotrust::system_state
 

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace zerotrust {
+namespace zerotrust::system_state {
 
 enum class SystemState : uint8_t {
     Init,           // Initial state - system starting up
@@ -51,11 +51,11 @@ enum class SystemEvent : uint8_t {
 // Undefined transitions are treated as errors.
 class SystemStateMachine {
 public:
-    explicit SystemStateMachine() : this->current_state_(SystemState::Init) {}
+    explicit SystemStateMachine() : current_state_(SystemState::Init) {}
     ~SystemStateMachine() = default;
 
     // Get current system state
-    SystemState get_state() const { return this->current_state_; }
+    SystemState get_state() const { return current_state_; }
 
     // Process an event and transition state if valid
     // Returns true if transition occurred, false if event is invalid for current state
@@ -65,6 +65,6 @@ private:
     SystemState current_state_;
 };
 
-} // namespace zerotrust
+} // namespace zerotrust::system_state
 
 #endif // FIRMWARE_COMPONENTS_SYSTEM_STATE_INCLUDE_SYSTEM_STATE_H
