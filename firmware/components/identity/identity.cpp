@@ -225,10 +225,10 @@ bool IdentityManager::generate_keys()
         // instance has a unique DRBG state even with identical hardware entropy
         const unsigned char personalization_label[] = "zt-identity";
         if (mbedtls_ctr_drbg_seed(&ctr_drbg, 
-                                mbedtls_entropy_func, // mbedTLS callback to collect hardware entropy
-                                &entropy,
-                                personalization_label,
-                                sizeof(personalization_label) - 1) != 0) {
+                                  mbedtls_entropy_func, // mbedTLS callback to collect hardware entropy
+                                  &entropy,
+                                  personalization_label,
+                                  sizeof(personalization_label) - 1) != 0) {
             // DRBG seeding failed - insufficient entropy or hardware fault
             success = false;
             break;
@@ -323,6 +323,122 @@ bool IdentityManager::generate_keys()
         key_algorithm_ = KeyAlgorithm::None;
         return false;
     }
+}
+
+bool IdentityManager::sign(const uint8_t* data, size_t datalen, uint8_t* sig, size_t* sig_len)
+{
+    // Validate input parameters
+    if (!data || !sig || !sig_len || datalen == 0) {
+        return false;
+    }
+
+    // Verify identity and cryptographic keys are ready for signing
+    // All three conditions must be met: identity exists, keys exist, and algorithm matches
+    if (identity_status_ != IdentityStatus::Present ||
+        key_status_ != KeyStatus::Present ||
+        key_algorithm_ != KeyAlgorithm::ECDSA_P256) {
+        return false;
+    }
+
+    // Open NVS namespace in read-only mode to retrieve private key
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(IdentityManager::NvsNamespace, NVS_READONLY, &handle);
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    // Probe for private key blob size (first call with nullptr to get required size)
+    size_t priv_size = 0;
+    error = nvs_get_blob(handle, IdentityManager::NvsKeyPrivateKey, nullptr, &priv_size);
+    if (error != ESP_OK || priv_size == 0) {
+        nvs_close(handle);
+        return false;
+    }
+
+    // Allocate variable-length array for private key DER data
+    uint8_t priv_buf[priv_size];
+    error = nvs_get_blob(handle, IdentityManager::NvsKeyPrivateKey, priv_buf, &priv_size);
+    nvs_close(handle); // Close handle immediately after loading - key is now in memory
+
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    // Initialize mbedTLS contexts for cryptographic operations
+    mbedtls_pk_context pk;                 // Public key container - supports ECC and RSA keys
+    mbedtls_entropy_context entropy;       // Hardware entropy source for cryptographic randomness
+    mbedtls_ctr_drbg_context ctr_drbg;     // Deterministic Random Bit Generator - seeded from entropy
+
+    mbedtls_pk_init(&pk);
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+
+    bool success = false;
+
+    // Use do-while(false) pattern for structured error handling
+    do {
+        // Parse private key from DER format into mbedTLS pk context
+        // After this, pk context can be used for signing operations
+        if (mbedtls_pk_parse_key(&pk,
+                                 priv_buf,
+                                 priv_size,
+                                 nullptr,                 // Password - keys are not encrypted
+                                 0,                       // Password length
+                                 mbedtls_ctr_drbg_random, // DRBG callback (required but unused for unencrypted keys)
+                                 &ctr_drbg) != 0) {
+            break;
+        }
+
+        // Seed DRBG with hardware entropy for signature randomness
+        // Personalization string ensures unique state for signing operations
+        const unsigned char personalization[] = "zt-sign";
+        if (mbedtls_ctr_drbg_seed(&ctr_drbg,
+                                  mbedtls_entropy_func, // mbedTLS callback to collect hardware entropy
+                                  &entropy,
+                                  personalization,
+                                  sizeof(personalization) - 1) != 0) {
+            break;
+        }
+
+        // Hash input data with SHA-256 before signing
+        // ECDSA signs the hash, not the raw data directly
+        uint8_t hash[IdentityManager::Sha256HashSize];
+        if (mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), // Get SHA-256 algorithm descriptor
+                       data,
+                       datalen,
+                       hash) != 0) {
+            break;
+        }
+
+        // Sign the hash using ECDSA P-256 private key
+        // Signature is written to sig buffer, actual length returned in out_len
+        size_t out_len = 0;
+        if (mbedtls_pk_sign(&pk,
+                            MBEDTLS_MD_SHA256,
+                            hash,
+                            IdentityManager::Sha256HashSize,
+                            sig,
+                            *sig_len,                // Maximum signature size (input)
+                            &out_len,                // Actual signature size (output, <= sig_len)
+                            mbedtls_ctr_drbg_random, // DRBG for ECDSA nonce generation
+                            &ctr_drbg) != 0) {
+            break;
+        }
+
+        *sig_len = out_len; // Update caller's signature length with actual size
+        success = true;
+    } while (false);
+
+    // Release mbedTLS resources
+    mbedtls_pk_free(&pk);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+    mbedtls_entropy_free(&entropy);
+
+    // Zero out private key buffer to prevent memory leaks of sensitive data
+    // Critical security practice - private key material must be cleared
+    memset(priv_buf, 0, sizeof(priv_buf));
+
+    return success;
 }
 
 bool IdentityManager::factory_reset()

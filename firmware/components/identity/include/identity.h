@@ -35,6 +35,7 @@ public:
     static constexpr size_t DeviceIdSize = 16;
     static constexpr size_t PrivateKeyDerMax = 512;
     static constexpr size_t PublicKeyDerMax  = 256;
+    static constexpr size_t Sha256HashSize = 32;  // SHA-256 produces 256 bits = 32 bytes
     // NVS namespace and key names
     static constexpr const char* NvsNamespace = "identity";
     static constexpr const char* NvsKeyDeviceId = "device_id";
@@ -56,6 +57,15 @@ public:
     // Generate cryptographic keypair (ECDSA P-256) if keys are not already present
     // Keys are stored in NVS in DER format
     bool generate_keys();
+
+    // Sign arbitrary data using device private key
+    // - data: pointer to input buffer
+    // - len: length of input buffer
+    // - sig: output buffer (DER encoded signature)
+    // - sig_len: in/out, size of buffer / actual signature length
+    //
+    // Returns false if identity or key is missing or corrupted
+    bool sign(const uint8_t* data, size_t len, uint8_t* sig, size_t* sig_len);
 
     // Factory reset: permanently erases device identity from NVS
     // This is a destructive, irreversible operation
