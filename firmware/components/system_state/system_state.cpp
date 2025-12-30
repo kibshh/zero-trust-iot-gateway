@@ -18,40 +18,42 @@ constexpr Transition transitions[] = {
     // Init
     { SystemState::Init,          SystemEvent::BootCompleted,        SystemState::IdentityReady },
     { SystemState::Init,          SystemEvent::BootFailed,           SystemState::Locked },
+    { SystemState::Init,          SystemEvent::ManualLock,           SystemState::Locked },
     // IdentityReady
     { SystemState::IdentityReady, SystemEvent::AttestationSucceeded, SystemState::Attested },
     { SystemState::IdentityReady, SystemEvent::AttestationFailed,    SystemState::Locked },
     { SystemState::IdentityReady, SystemEvent::IdentityLoadFailed,   SystemState::Locked },
-    { SystemState::IdentityReady, SystemEvent::ManualLock,           SystemState::Locked },
     { SystemState::IdentityReady, SystemEvent::RevocationReceived,   SystemState::Revoked },
+    { SystemState::IdentityReady, SystemEvent::ManualLock,           SystemState::Locked },
     // Attested
     { SystemState::Attested,      SystemEvent::AuthorizationGranted, SystemState::Authorized },
     { SystemState::Attested,      SystemEvent::AuthorizationDenied,  SystemState::Locked },
-    { SystemState::Attested,      SystemEvent::ManualLock,           SystemState::Locked },
     { SystemState::Attested,      SystemEvent::RevocationReceived,   SystemState::Revoked },
+    { SystemState::Attested,      SystemEvent::ManualLock,           SystemState::Locked },
     // Authorized
     { SystemState::Authorized,    SystemEvent::PolicyLoaded,         SystemState::Operational },
     { SystemState::Authorized,    SystemEvent::BackendUnavailable,   SystemState::Degraded },
     { SystemState::Authorized,    SystemEvent::AuthorizationExpired, SystemState::Locked },
-    { SystemState::Authorized,    SystemEvent::ManualLock,           SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::Authorized,    SystemEvent::DegradationDetected,  SystemState::Degraded },
+    { SystemState::Authorized,    SystemEvent::ManualLock,           SystemState::Locked },
     // Operational
     { SystemState::Operational,   SystemEvent::PolicyViolation,      SystemState::Locked },
     { SystemState::Operational,   SystemEvent::PolicyExpired,        SystemState::Locked },
     { SystemState::Operational,   SystemEvent::BackendUnavailable,   SystemState::Degraded },
-    { SystemState::Operational,   SystemEvent::ManualLock,           SystemState::Locked },
     { SystemState::Operational,   SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::Operational,   SystemEvent::DegradationDetected,  SystemState::Degraded },
+    { SystemState::Operational,   SystemEvent::ManualLock,           SystemState::Locked },
     // Degraded
     { SystemState::Degraded,      SystemEvent::BackendAvailable,     SystemState::Operational },
     { SystemState::Degraded,      SystemEvent::PolicyExpired,        SystemState::Locked },
     { SystemState::Degraded,      SystemEvent::PolicyViolation,      SystemState::Locked },
-    { SystemState::Degraded,      SystemEvent::ManualLock,           SystemState::Locked },
     { SystemState::Degraded,      SystemEvent::RevocationReceived,   SystemState::Revoked },
+    { SystemState::Degraded,      SystemEvent::ManualLock,           SystemState::Locked },
     // Locked
     { SystemState::Locked,        SystemEvent::FactoryReset,         SystemState::Init },
     { SystemState::Locked,        SystemEvent::RevocationReceived,   SystemState::Revoked },
+    { SystemState::Locked,        SystemEvent::ManualLock,           SystemState::Locked },
     // Revoked
     // terminal state, no exits
 };
