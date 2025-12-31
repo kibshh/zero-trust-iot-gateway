@@ -12,11 +12,37 @@ PolicyDecision PolicyEngine::evaluate(PolicyAction action, const PolicyContext& 
     // Phase 1: State-based allow-list
     // Each state defines a minimal set of permitted actions
     switch (ctx.state) {
-        case system_state::SystemState::Locked:
         case system_state::SystemState::Revoked:
-            // Terminal security states - deny all actions unconditionally
+            // Terminal security state - deny all actions unconditionally
             allowed = false;
             break;
+
+        case system_state::SystemState::Locked:
+            // Default deny for non-system actors
+            if (ctx.actor != PolicyActor::System &&
+                ctx.actor != PolicyActor::Backend) {
+                allowed = false;
+                break;
+            }
+            // Backend must actually be connected
+            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) {
+                allowed = false;
+                break;
+            }
+            // Allow minimal safe actions only
+            switch (action) {
+                case PolicyAction::SystemReboot: // Reboot the device (safe)
+                case PolicyAction::SystemSleep:  // Sleep the device
+                case PolicyAction::StorageRead:  // Read from storage
+                case PolicyAction::NetworkSend:  // Send data to network (audit-only heartbeat)
+                    allowed = true;
+                    break;
+
+                default:
+                    allowed = false;
+                    break;
+            }
+            break;  // Exit outer switch after Locked case
 
         case system_state::SystemState::Init:
         case system_state::SystemState::IdentityReady:
