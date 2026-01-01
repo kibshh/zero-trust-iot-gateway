@@ -5,105 +5,171 @@ namespace zerotrust::policy {
 PolicyDecision PolicyEngine::evaluate(PolicyAction action, const PolicyContext& ctx) const
 {
     // Zero-trust policy evaluation
-    // Default deny unless explicitly allowed by both state and context checks
+    // Default deny unless explicitly allowed by state, actor, and action checks
 
-    bool allowed = false;
+    // Unknown actors are never trusted under any circumstances
+    if (ctx.actor == PolicyActor::Unknown) {
+        return PolicyDecision::Deny;
+    }
 
-    // Phase 1: State-based allow-list
-    // Each state defines a minimal set of permitted actions
     switch (ctx.state) {
         case system_state::SystemState::Revoked:
-            // Terminal security state - deny all actions unconditionally
-            allowed = false;
-            break;
+            // Permanent lockout - deny everything unconditionally
+            return PolicyDecision::Deny;
 
         case system_state::SystemState::Locked:
-            // Default deny for non-system actors
+            // Recoverable lockout - only System/Backend can perform safe actions
+            // Used for integrity failures, policy violations, or manual lock.
+            // Only trusted control planes may perform minimal safe actions.
             if (ctx.actor != PolicyActor::System &&
                 ctx.actor != PolicyActor::Backend) {
-                allowed = false;
-                break;
+                return PolicyDecision::Deny;
             }
-            // Backend must actually be connected
-            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) {
-                allowed = false;
-                break;
+            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) { // Prevent spoofing
+                return PolicyDecision::Deny;
             }
-            // Allow minimal safe actions only
             switch (action) {
-                case PolicyAction::SystemReboot: // Reboot the device (safe)
-                case PolicyAction::SystemSleep:  // Sleep the device
-                case PolicyAction::StorageRead:  // Read from storage
-                case PolicyAction::NetworkSend:  // Send data to network (audit-only heartbeat)
-                    allowed = true;
-                    break;
-
+                case PolicyAction::SystemReboot: // Recover from fault
+                case PolicyAction::SystemSleep:  // Power saving
+                case PolicyAction::StorageRead:  // Diagnostics / forensics
+                case PolicyAction::NetworkSend:  // Error reporting to backend
+                    return PolicyDecision::Allow;
                 default:
-                    allowed = false;
-                    break;
+                    return PolicyDecision::Deny;
             }
-            break;  // Exit outer switch after Locked case
 
         case system_state::SystemState::Init:
+            // Identity, storage, and cryptographic primitives only.
+            // No external influence allowed.
+            if (ctx.actor != PolicyActor::System) {
+                return PolicyDecision::Deny;
+            }
+            switch (action) {
+                case PolicyAction::StorageRead:   // Load identity, keys, configuration
+                case PolicyAction::StorageWrite:  // Generate identity, keys
+                case PolicyAction::SystemReboot:  // Allow recovery during boot failures
+                    return PolicyDecision::Allow;
+                default:
+                    return PolicyDecision::Deny;
+            }
+
         case system_state::SystemState::IdentityReady:
+            // System or connected backend - preparing for attestation
+            if (ctx.actor != PolicyActor::System &&
+                ctx.actor != PolicyActor::Backend) {
+                return PolicyDecision::Deny;
+            }
+            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) {
+                return PolicyDecision::Deny;
+            }
+            switch (action) {
+                case PolicyAction::GpioRead:        // Safe observation
+                case PolicyAction::SensorRead:      // Safe observation
+                case PolicyAction::StorageRead:     // Read configuration
+                case PolicyAction::NetworkSend:     // Send attestation or diagnostics
+                case PolicyAction::NetworkReceive:  // Receive attestation challenge
+                case PolicyAction::SystemReboot:    // Allow controlled restart
+                    return PolicyDecision::Allow;
+                default:
+                    return PolicyDecision::Deny;
+            }
+
         case system_state::SystemState::Attested:
-            // Pre-authorization states - read-only, non-invasive operations
-            // Device identity not yet verified by backend
-            allowed =
-                action == PolicyAction::GpioRead ||
-                action == PolicyAction::SensorRead;
-            break;
+            // Attestation complete, awaiting backend authorization
+            if (ctx.actor != PolicyActor::System &&
+                ctx.actor != PolicyActor::Backend) {
+                return PolicyDecision::Deny;
+            }
+            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) {
+                return PolicyDecision::Deny;
+            }
+            switch (action) {
+                case PolicyAction::GpioRead:        // Safe observation
+                case PolicyAction::SensorRead:      // Safe observation
+                case PolicyAction::StorageRead:     // Read configuration
+                case PolicyAction::ConfigRead:      // Read configuration
+                case PolicyAction::NetworkSend:     // Authorization exchange
+                case PolicyAction::NetworkReceive:  // Authorization exchange
+                case PolicyAction::SystemReboot:    // Allow controlled restart
+                    return PolicyDecision::Allow;
+                default:
+                    return PolicyDecision::Deny;
+            }
 
         case system_state::SystemState::Authorized:
-            // Backend authorized device but policy not yet loaded
-            // Allow reads and outbound network (for policy fetch)
-            allowed =
-                action == PolicyAction::GpioRead ||
-                action == PolicyAction::SensorRead ||
-                action == PolicyAction::NetworkSend ||
-                action == PolicyAction::ConfigRead;
-            break;
+            // Backend authorized, policy not yet loaded
+            if (ctx.actor != PolicyActor::System &&
+                ctx.actor != PolicyActor::Backend) {
+                return PolicyDecision::Deny;
+            }
+            if (ctx.actor == PolicyActor::Backend && !ctx.backend_connected) {
+                return PolicyDecision::Deny;
+            }
+            switch (action) {
+                case PolicyAction::GpioRead:        // Safe observation
+                case PolicyAction::SensorRead:      // Safe observation
+                case PolicyAction::StorageRead:     // Read configuration
+                case PolicyAction::StorageWrite:    // DIFFERENCE from Authorized state, to persist policy
+                case PolicyAction::ConfigRead:      // Read configuration
+                case PolicyAction::NetworkSend:     // Control-plane communication
+                case PolicyAction::NetworkReceive:  // Control-plane communication
+                case PolicyAction::SystemReboot:    // Allow controlled restart
+                    return PolicyDecision::Allow;
+                default:
+                    return PolicyDecision::Deny;
+            }
 
         case system_state::SystemState::Operational:
-            // Fully operational - all actions permitted (subject to Phase 2 gates)
-            allowed = true;
-            break;
+            // Fully operational - most actions permitted
+            if (ctx.actor == PolicyActor::System) {  // System is always allowed
+                return PolicyDecision::Allow;
+            }
+            if (ctx.actor == PolicyActor::Backend) {
+                // Backend is trusted ONLY if connection is authenticated
+                if (!ctx.backend_connected) {
+                    return PolicyDecision::Deny;
+                }
+                return PolicyDecision::Allow;
+            }
+            // LocalUser / Peripheral actors
+            // Allow only physically safe and local operations
+            // No configuration, no firmware, no inbound network control
+            switch (action) {
+                case PolicyAction::GpioRead:
+                case PolicyAction::GpioWrite:
+                case PolicyAction::SensorRead:
+                case PolicyAction::ActuatorWrite:
+                    // Local interaction with hardware is allowed
+                    return PolicyDecision::Allow;
+
+                default:
+                    // Anything that affects system integrity,
+                    // configuration, or remote control is denied
+                    return PolicyDecision::Deny;
+            }
 
         case system_state::SystemState::Degraded:
-            // Backend unreachable - allow only offline-safe local operations
-            // No network, no persistent writes, no config changes
-            allowed =
-                action == PolicyAction::GpioRead ||
-                action == PolicyAction::SensorRead ||
-                action == PolicyAction::ActuatorWrite;
-            break;
+            // Backend unreachable - offline-safe local operations only
+            if (ctx.actor != PolicyActor::System) {
+                return PolicyDecision::Deny;
+            }
+            switch (action) {
+                case PolicyAction::GpioRead:        // Safe observation
+                case PolicyAction::SensorRead:      // Safe observation
+                case PolicyAction::ActuatorWrite:   // Safety-critical local control
+                case PolicyAction::StorageRead:     // Diagnostics / forensics
+                case PolicyAction::NetworkSend:     // Buffered telemetry
+                case PolicyAction::SystemReboot:    // Allow controlled restart
+                case PolicyAction::SystemSleep:     // Power saving
+                    return PolicyDecision::Allow;
+                default:
+                    return PolicyDecision::Deny;
+            }
 
         default:
             // Unknown state - fail closed
             return PolicyDecision::Deny;
     }
-
-    if (!allowed) {
-        return PolicyDecision::Deny;
-    }
-
-    // Phase 2: Backend-dependent security gates
-    // These actions require active backend connection regardless of state
-    // Prevents unauthorized firmware updates, config changes, and command injection
-    if (!ctx.backend_connected) {
-        switch (action) {
-            case PolicyAction::FirmwareUpdate:   // Firmware integrity requires backend verification
-            case PolicyAction::NetworkReceive:   // Inbound commands must come from verified backend
-            case PolicyAction::ConfigWrite:      // Config changes require backend audit trail
-            case PolicyAction::NetworkConnect:   // New connections require backend authorization
-                return PolicyDecision::Deny;
-            default:
-                // NetworkSend allowed without backend (outbound telemetry can queue locally)
-                break;
-        }
-    }
-
-    return PolicyDecision::Allow;
 }
 
 } // namespace zerotrust::policy
