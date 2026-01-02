@@ -31,13 +31,21 @@ constexpr Transition transitions[] = {
     { SystemState::Attested,      SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::Attested,      SystemEvent::ManualLock,           SystemState::Locked },
     // Authorized
+    // NOTE:
+    // In Authorized state the device has NO local runtime policy.
+    // Loss of backend connectivity here results in LOCKED state,
+    // not DEGRADED, because no safe offline operation is possible.
     { SystemState::Authorized,    SystemEvent::PolicyLoaded,         SystemState::Operational },
-    { SystemState::Authorized,    SystemEvent::BackendUnavailable,   SystemState::Degraded },
+    { SystemState::Authorized,    SystemEvent::BackendUnavailable,   SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::AuthorizationExpired, SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::RevocationReceived,   SystemState::Revoked },
-    { SystemState::Authorized,    SystemEvent::DegradationDetected,  SystemState::Degraded },
     { SystemState::Authorized,    SystemEvent::ManualLock,           SystemState::Locked },
     // Operational
+    // NOTE:
+    // Authorized != Operational
+    // Device enters Operational state ONLY after a verified policy
+    // has been successfully loaded and persisted locally.
+    // This prevents half-authorized or spoofed runtime behavior.
     { SystemState::Operational,   SystemEvent::PolicyViolation,      SystemState::Locked },
     { SystemState::Operational,   SystemEvent::PolicyExpired,        SystemState::Locked },
     { SystemState::Operational,   SystemEvent::BackendUnavailable,   SystemState::Degraded },

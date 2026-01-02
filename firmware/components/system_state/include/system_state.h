@@ -13,7 +13,8 @@ enum class SystemState : uint8_t {
     Operational,    // Fully operational, enforcing policies
     Degraded,       // Partial functionality, some features unavailable
     Locked,         // System locked - all actions denied (policy expired/offline)
-    Revoked         // Device revoked by backend - permanent lockout
+    Revoked,        // Device revoked by backend - permanent lockout
+    _Count          // Number of states (for validation)
 };
 
 enum class SystemEvent : uint8_t {

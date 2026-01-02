@@ -7,6 +7,7 @@
 #include "system_state.h"
 #include "identity.h"
 #include "attestation.h"
+#include "policy.h"
 
 namespace zerotrust::system_controller {
 
@@ -28,6 +29,10 @@ public:
 
     // Called when backend responds with authorization decision
     void on_authorization_result(bool granted);
+
+    // Called when policy result is available
+    void on_policy_result(policy::PolicyLoadResult result);
+
 
 private:
     system_state::SystemStateMachine& fsm_;
