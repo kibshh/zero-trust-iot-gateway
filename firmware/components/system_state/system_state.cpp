@@ -21,12 +21,14 @@ constexpr Transition transitions[] = {
     { SystemState::Init,          SystemEvent::ManualLock,           SystemState::Locked },
     // IdentityReady
     { SystemState::IdentityReady, SystemEvent::AttestationSucceeded, SystemState::Attested },
+    { SystemState::IdentityReady, SystemEvent::BackendUnavailable,   SystemState::IdentityReady },
     { SystemState::IdentityReady, SystemEvent::AttestationFailed,    SystemState::Locked },
     { SystemState::IdentityReady, SystemEvent::IdentityLoadFailed,   SystemState::Locked },
     { SystemState::IdentityReady, SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::IdentityReady, SystemEvent::ManualLock,           SystemState::Locked },
     // Attested
     { SystemState::Attested,      SystemEvent::AuthorizationGranted, SystemState::Authorized },
+    { SystemState::Attested,      SystemEvent::BackendUnavailable,   SystemState::Locked },
     { SystemState::Attested,      SystemEvent::AuthorizationDenied,  SystemState::Locked },
     { SystemState::Attested,      SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::Attested,      SystemEvent::ManualLock,           SystemState::Locked },
@@ -36,9 +38,11 @@ constexpr Transition transitions[] = {
     // Loss of backend connectivity here results in LOCKED state,
     // not DEGRADED, because no safe offline operation is possible.
     { SystemState::Authorized,    SystemEvent::PolicyLoaded,         SystemState::Operational },
+    { SystemState::Authorized,    SystemEvent::PolicyViolation,      SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::BackendUnavailable,   SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::AuthorizationExpired, SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::RevocationReceived,   SystemState::Revoked },
+    { SystemState::Authorized,    SystemEvent::PolicyExpired,        SystemState::Locked },
     { SystemState::Authorized,    SystemEvent::ManualLock,           SystemState::Locked },
     // Operational
     // NOTE:
@@ -48,6 +52,7 @@ constexpr Transition transitions[] = {
     // This prevents half-authorized or spoofed runtime behavior.
     { SystemState::Operational,   SystemEvent::PolicyViolation,      SystemState::Locked },
     { SystemState::Operational,   SystemEvent::PolicyExpired,        SystemState::Locked },
+    { SystemState::Operational,   SystemEvent::AuthorizationExpired, SystemState::Locked },
     { SystemState::Operational,   SystemEvent::BackendUnavailable,   SystemState::Degraded },
     { SystemState::Operational,   SystemEvent::RevocationReceived,   SystemState::Revoked },
     { SystemState::Operational,   SystemEvent::DegradationDetected,  SystemState::Degraded },

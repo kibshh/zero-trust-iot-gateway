@@ -95,6 +95,12 @@ struct PolicyContext {
     bool attested;                      // Device has been attested
 };
 
+// Source of policy decision
+enum class PolicyDecisionSource : uint8_t {
+    Policy,     // Decision from loaded policy rules
+    Baseline    // Decision from baseline PolicyEngine
+};
+
 // Audit record for policy enforcement
 struct PolicyAuditRecord {
     PolicyAction action;               // What was attempted
@@ -103,6 +109,7 @@ struct PolicyAuditRecord {
     PolicyOrigin origin;               // Where the action originated
     PolicyIntent intent;               // Why the action was taken
     system_state::SystemState state;   // System state at time of action
+    PolicyDecisionSource source;       // Who made the decision
 };
 
 // Raw policy blob received from backend

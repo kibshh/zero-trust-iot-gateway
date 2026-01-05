@@ -19,10 +19,12 @@ void process_event_or_lock(system_state::SystemStateMachine& fsm,
 
 SystemController::SystemController(system_state::SystemStateMachine& fsm,
                                    identity::IdentityManager& identity,
-                                   attestation::AttestationEngine& attestation)
+                                   attestation::AttestationEngine& attestation,
+                                   policy::PolicyManager& policy_mgr)
     : fsm_(fsm),
       identity_(identity),
-      attestation_(attestation) {}
+      attestation_(attestation),
+      policy_mgr_(policy_mgr) {}
 
 void SystemController::on_boot()
 {
@@ -116,6 +118,25 @@ void SystemController::on_authorization_result(bool granted)
     }
 }
 
+void SystemController::on_policy_blob_received(const uint8_t* data, size_t len)
+{
+    // Basic sanity check (backend bug / transport corruption)
+    if (!data || len == 0) {
+        return;  // Ignore silently, backend can retry
+    }
+
+    // Policy must only be processed in Authorized state
+    if (fsm_.get_state() != system_state::SystemState::Authorized) {
+        return;
+    }
+
+    policy::PolicyBlob blob{data, len};
+    policy::PolicyLoadResult result = policy_mgr_.load_policy(blob);
+
+    // Delegate to on_policy_result for FSM transitions
+    on_policy_result(result);
+}
+
 void SystemController::on_policy_result(policy::PolicyLoadResult result)
 {
     if (fsm_.get_state() != system_state::SystemState::Authorized) {
@@ -139,19 +160,29 @@ void SystemController::on_policy_result(policy::PolicyLoadResult result)
         case policy::PolicyLoadResult::SecurityViolation:
             // Invalid signature, rollback attempt, device mismatch
             // Trust is broken -> immediate lock
-            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+            process_event_or_lock(fsm_, system_state::SystemEvent::PolicyViolation);
             break;
-
         default:
-            // Defensive: unknown result -> fail closed
-            process_event_or_lock(
-                fsm_,
-                system_state::SystemEvent::ManualLock
-            );
+            // Unreachable, silences compiler warning
             break;
     }
 }
 
+void SystemController::on_periodic_tick()
+{
+    system_state::SystemState state = fsm_.get_state();
+
+    // Policy expiration is relevant only in runtime states
+    if (state != system_state::SystemState::Operational &&
+        state != system_state::SystemState::Degraded) {
+        return;
+    }
+
+    if (policy_mgr_.is_policy_expired()) {
+        // Policy has expired, lock the device
+        process_event_or_lock(fsm_, system_state::SystemEvent::PolicyExpired);
+    }
+}
 
 } // namespace zerotrust::system_controller
 

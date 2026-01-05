@@ -7,7 +7,8 @@
 #include "system_state.h"
 #include "identity.h"
 #include "attestation.h"
-#include "policy.h"
+#include "policy_types.h"
+#include "policy_manager.h"
 
 namespace zerotrust::system_controller {
 
@@ -17,7 +18,8 @@ class SystemController {
 public:
     SystemController(system_state::SystemStateMachine& fsm,
                      identity::IdentityManager& identity,
-                     attestation::AttestationEngine& attestation);
+                     attestation::AttestationEngine& attestation,
+                     policy::PolicyManager& policy_mgr);
 
     // Called once at boot
     void on_boot();
@@ -30,14 +32,21 @@ public:
     // Called when backend responds with authorization decision
     void on_authorization_result(bool granted);
 
-    // Called when policy result is available
+    // Called when policy blob is received from backend
+    // Loads, verifies, persists and activates the policy
+    void on_policy_blob_received(const uint8_t* data, size_t len);
+
+    // Called when policy load result is available (if loading done externally)
     void on_policy_result(policy::PolicyLoadResult result);
 
+    // Called periodically
+    void on_periodic_tick();
 
 private:
     system_state::SystemStateMachine& fsm_;
     identity::IdentityManager& identity_;
     attestation::AttestationEngine& attestation_;
+    policy::PolicyManager& policy_mgr_;
 };
 
 } // namespace zerotrust::system_controller

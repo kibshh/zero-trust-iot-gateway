@@ -30,7 +30,7 @@ enum class SystemEvent : uint8_t {
     AuthorizationDenied,    // Backend denied authorization
     // Available for Authorized
     PolicyLoaded,           // Valid policy received and verified
-    AuthorizationExpired,   // Authorization expired (time / policy)
+    AuthorizationExpired,   // Backend authorization lease expired (independent of policy)
     // Available for Authorized or Operational
     BackendUnavailable,     // Backend lost / unreachable
     DegradationDetected,    // Partial failure (sensor missing, limited mode)
@@ -43,7 +43,7 @@ enum class SystemEvent : uint8_t {
     FactoryReset,           // Physical / authenticated factory reset
     // Available for all states
     ManualLock,             // Explicit lock command (admin / backend)
-    RevocationReceived      // Device revoked permanently
+    RevocationReceived      // Permanent backend revocation (no recovery)
 };
 
 

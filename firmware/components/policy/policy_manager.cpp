@@ -55,9 +55,9 @@ void secure_zero(void* ptr, size_t len)
     }
 }
 
-// Check if policy has expired
+// Check if policy has expired (internal helper)
 // Returns true if expired, false if still valid or expiration not applicable
-bool is_policy_expired(uint32_t expires_at)
+bool check_expiration(uint32_t expires_at)
 {
     // expires_at == 0 means no expiration
     if (expires_at == 0) {
@@ -79,6 +79,26 @@ bool is_policy_expired(uint32_t expires_at)
 
     // Policy is expired if current time exceeds expires_at
     return static_cast<uint32_t>(now) > expires_at;
+}
+
+// Record audit event for policy decision
+inline void audit_decision(PolicyDecision decision,
+                           PolicyAction action,
+                           const PolicyContext& ctx,
+                           PolicyEngine& engine,
+                           PolicyDecisionSource source)
+{
+    PolicyAuditRecord record{
+        .action = action,
+        .decision = decision,
+        .actor = ctx.actor,
+        .origin = ctx.origin,
+        .intent = ctx.intent,
+        .state = ctx.state,
+        .source = source
+    };
+
+    engine.audit(record);
 }
 
 // Verify policy signature and device_id match
@@ -441,7 +461,7 @@ PolicyLoadResult PolicyManager::load_policy(const PolicyBlob& policy_blob)
     }
 
     // Check expiration - reject already-expired policies
-    if (is_policy_expired(parsed.expires_at)) {
+    if (check_expiration(parsed.expires_at)) {
         return PolicyLoadResult::SecurityViolation;
     }
 
@@ -456,78 +476,67 @@ PolicyLoadResult PolicyManager::load_policy(const PolicyBlob& policy_blob)
     policy_active_ = true;
     policy_version_ = parsed.policy_version;
 
+    // Clear old audit records - new policy starts fresh
+    policy_engine_.clear_audit();
+
     return PolicyLoadResult::Ok;
 }
 
 PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext& ctx) const
 {
-    // If no policy is active, deny everything except system-critical actions
-    // This is the fail-closed default behavior
+    PolicyDecision decision = PolicyDecision::Deny;
+
+    // 1. No policy active → baseline only
     if (!policy_active_) {
-        // Allow only system actor to perform minimal boot operations
-        if (ctx.actor == PolicyActor::System) {
-            switch (action) {
-                case PolicyAction::StorageRead:
-                case PolicyAction::NetworkSend:
-                case PolicyAction::NetworkReceive:
-                case PolicyAction::SystemReboot:
-                    return PolicyDecision::Allow;
-                default:
-                    return PolicyDecision::Deny;
-            }
-        }
-        return PolicyDecision::Deny;
+        decision = baseline_engine_.evaluate(action, ctx);
+        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+        return decision;
     }
 
-    // Check if policy has expired at runtime
-    // If expired, fall back to baseline engine (conservative deny-by-default)
-    if (is_policy_expired(parsed_policy_.expires_at)) {
-        return baseline_engine_.evaluate(action, ctx);
+    // 2. Policy expired at runtime → baseline fallback
+    if (check_expiration(parsed_policy_.expires_at)) {
+        decision = baseline_engine_.evaluate(action, ctx);
+        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+        return decision;
     }
 
-    // Evaluate against parsed policy rules
-    // Rules are evaluated in order - first matching rule wins
-    // Rules are evaluated top-down, first match wins.
-    // Backend must order rules accordingly.
+    // 3. Evaluate against parsed policy rules (first match wins)
     for (uint16_t i = 0; i < parsed_policy_.rule_count; ++i) {
         const PolicyRule& rule = parsed_policy_.rules[i];
 
-        // Check state match (0xFF = any state)
         if (static_cast<uint8_t>(rule.state) != ParsedPolicy::AnyState &&
             rule.state != ctx.state) {
             continue;
         }
 
-        // Check actor match (0xFF = any actor)
         if (static_cast<uint8_t>(rule.actor) != ParsedPolicy::AnyActor &&
             rule.actor != ctx.actor) {
             continue;
         }
 
-        // Check origin match (0xFF = any origin)
         if (static_cast<uint8_t>(rule.origin) != ParsedPolicy::AnyOrigin &&
             rule.origin != ctx.origin) {
             continue;
         }
 
-        // Check intent match (0xFF = any intent)
         if (static_cast<uint8_t>(rule.intent) != ParsedPolicy::AnyIntent &&
             rule.intent != ctx.intent) {
             continue;
         }
 
-        // Check action match
         if (rule.action != action) {
             continue;
         }
 
-        // Rule matches - return its decision
-        return rule.decision;
+        decision = rule.decision;
+        audit_decision(decision, action, ctx, policy_engine_, PolicyDecisionSource::Policy);
+        return decision;
     }
 
-    // No matching rule - fall back to baseline PolicyEngine
-    // This provides baseline security even with incomplete policies
-    return baseline_engine_.evaluate(action, ctx);
+    // 4. No matching rule → baseline fallback
+    decision = baseline_engine_.evaluate(action, ctx);
+    audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+    return decision;
 }
 
 void PolicyManager::clear_policy()
@@ -621,6 +630,14 @@ bool PolicyManager::has_backend_public_key() const
     return error == ESP_OK && key_size > 0;
 }
 
+bool PolicyManager::is_policy_expired() const
+{
+    if (!policy_active_) {
+        return false;
+    }
+    return check_expiration(parsed_policy_.expires_at);
+}
+
 bool PolicyManager::load_persisted_policy()
 {
     // Load policy from NVS into memory on startup
@@ -697,7 +714,7 @@ bool PolicyManager::load_persisted_policy()
 
     // Check if persisted policy has expired
     // Don't activate expired policies - device needs fresh policy from backend
-    if (is_policy_expired(parsed_policy_.expires_at)) {
+    if (check_expiration(parsed_policy_.expires_at)) {
         policy_active_ = false;
         policy_version_ = 0;
         parsed_policy_ = ParsedPolicy{};

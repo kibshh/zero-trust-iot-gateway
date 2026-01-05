@@ -32,6 +32,7 @@ public:
     bool is_policy_active() const { return policy_active_; }
     uint32_t get_policy_version() const { return policy_version_; }
     bool has_backend_public_key() const;
+    bool is_policy_expired() const;
 
     // Provision backend public key (DER-encoded ECDSA P-256, called once during provisioning)
     bool set_backend_public_key(const uint8_t* key, size_t len);
@@ -49,9 +50,14 @@ public:
     // Call during system initialization after identity is ready
     bool load_persisted_policy();
 
+    // Access audit logs
+    const PolicyEngine& get_policy_engine() const { return policy_engine_; }
+    const PolicyEngine& get_baseline_engine() const { return baseline_engine_; }
+
 private:
     identity::IdentityManager& identity_;
-    PolicyEngine& baseline_engine_;
+    PolicyEngine& baseline_engine_;      // External baseline engine
+    mutable PolicyEngine policy_engine_; // Owned engine for policy decisions (mutable for audit in const methods)
     bool policy_active_;
     uint32_t policy_version_;
     ParsedPolicy parsed_policy_;
