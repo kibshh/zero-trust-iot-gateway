@@ -42,7 +42,16 @@ public:
     // Called periodically
     void on_periodic_tick();
 
+    // Centralized policy-enforced action execution
+    // Evaluates action against policy and triggers FSM events on violations
+    policy::PolicyDecision authorize_action(policy::PolicyAction action,
+                                            const policy::PolicyContext& ctx);
+
 private:
+    // Handle policy decision outcome
+    // Triggers PolicyViolation event if policy explicitly denies action
+    void on_policy_decision(policy::PolicyDecision decision,
+                            policy::PolicyDecisionSource source);
     system_state::SystemStateMachine& fsm_;
     identity::IdentityManager& identity_;
     attestation::AttestationEngine& attestation_;

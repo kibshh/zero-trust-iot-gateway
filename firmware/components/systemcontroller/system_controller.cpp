@@ -184,5 +184,41 @@ void SystemController::on_periodic_tick()
     }
 }
 
+policy::PolicyDecision SystemController::authorize_action(
+    policy::PolicyAction action,
+    const policy::PolicyContext& ctx)
+{
+    policy::PolicyDecision decision = policy_mgr_.evaluate(action, ctx);
+
+    // Get the engine that made the decision to retrieve audit record
+    const policy::PolicyEngine& engine =
+        (policy_mgr_.is_policy_active())
+            ? policy_mgr_.get_policy_engine()
+            : policy_mgr_.get_baseline_engine();
+
+    // Retrieve the most recent audit record (just written by evaluate)
+    const policy::PolicyAuditRecord* record =
+        engine.get_audit_record(engine.get_audit_count() - 1);
+
+    if (record) {
+        on_policy_decision(record->decision, record->source);
+    }
+
+    return decision;
+}
+
+void SystemController::on_policy_decision(
+    policy::PolicyDecision decision,
+    policy::PolicyDecisionSource source)
+{
+    // Only trigger violation event if policy explicitly denied the action
+    // Baseline denials don't trigger violations (expected behavior)
+    if (decision == policy::PolicyDecision::Deny &&
+        source == policy::PolicyDecisionSource::Policy)
+    {
+        process_event_or_lock(fsm_, system_state::SystemEvent::PolicyViolation);
+    }
+}
+
 } // namespace zerotrust::system_controller
 
