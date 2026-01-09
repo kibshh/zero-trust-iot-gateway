@@ -30,3 +30,9 @@ __pycache__/
 # ==================================================
 *.log
 .temp/
+
+# ==================================================
+# Context Files (local only, not for version control)
+# ==================================================
+PROJECT_CONTEXT.md
+DEVELOPMENT_NOTES.md

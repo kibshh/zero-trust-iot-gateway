@@ -6,6 +6,8 @@
 *.dylib
 backend
 backend.exe
+server
+server.exe
 
 # Test binary
 *.test

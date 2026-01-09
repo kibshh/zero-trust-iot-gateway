@@ -6,6 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/attestation"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/audit"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/device"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/policy"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/server"
 )
 
 func main() {
@@ -17,8 +23,8 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		<-sigChan
-		log.Println("Shutdown signal received, shutting down gracefully...")
+		sig := <-sigChan
+		log.Printf("Shutdown signal received: %s", sig)
 		cancel()
 	}()
 
@@ -31,20 +37,30 @@ func main() {
 func run(ctx context.Context) error {
 	// TODO: Initialize configuration
 	// TODO: Initialize database/storage
-	// TODO: Initialize HTTP/gRPC server
+
 	// TODO: Initialize device management service
-	// TODO: Initialize policy management service
+	var deviceSvc device.Service = nil // TODO: implement device service
+
 	// TODO: Initialize attestation service
+	var attestationSvc attestation.Service = nil // TODO: implement attestation service
 
-	log.Println("Backend server starting...")
+	// TODO: Initialize policy management service
+	var policySvc policy.Service = nil // TODO: implement policy service
 
-	// TODO: Start HTTP/gRPC server
-	// TODO: Start background workers
+	// TODO: Initialize audit sink
+	var auditSink audit.Sink = nil // TODO: implement audit sink
 
-	// Wait for context cancellation
-	<-ctx.Done()
+	// Initialize HTTP server with default configuration
+	cfg := server.DefaultConfig()
+	srv := server.New(
+		cfg,
+		attestationSvc,
+		deviceSvc,
+		policySvc,
+		auditSink,
+	)
 
-	log.Println("Backend server shutting down...")
-	return nil
+	// Start server (blocks until context is cancelled)
+	return srv.Start(ctx)
 }
 
