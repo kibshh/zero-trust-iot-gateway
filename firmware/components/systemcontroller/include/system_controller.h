@@ -9,6 +9,7 @@
 #include "attestation.h"
 #include "policy_types.h"
 #include "policy_manager.h"
+#include "backend_client.h"
 
 namespace zerotrust::system_controller {
 
@@ -28,6 +29,9 @@ public:
     bool on_attestation_challenge(const uint8_t* nonce,
                                   size_t nonce_len,
                                   attestation::AttestationResponse& response);
+
+    // Called when backend responds with attestation verification result
+    void on_attestation_verify_result(backend::BackendStatus status);
 
     // Called when backend responds with authorization decision
     void on_authorization_result(bool granted);

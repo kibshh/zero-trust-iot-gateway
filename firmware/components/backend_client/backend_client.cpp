@@ -99,8 +99,8 @@ BackendStatus BackendClient::request_attestation_challenge(
     // Build JSON body: {"device_id":"<hex>"}
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1]; // +1 for null terminator
     bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex); 
-    char json_body[BackendClient::JsonBodyBufferSize];
-    snprintf(json_body, BackendClient::JsonBodyBufferSize,
+    char json_body[BackendClient::AttestationChallengeReqJsonBodyBufferSize];
+    snprintf(json_body, BackendClient::AttestationChallengeReqJsonBodyBufferSize,
              "{\"device_id\":\"%s\"}", device_id_hex);
              
     char response_buf[BackendClient::ResponseBufferSize];
@@ -183,6 +183,102 @@ BackendStatus BackendClient::request_attestation_challenge(
 
     cJSON_Delete(root);
     return BackendStatus::Ok;
+}
+
+BackendStatus BackendClient::verify_attestation(const attestation::AttestationResponse& response)
+{
+    if (!initialized_) {
+        return BackendStatus::NotInitialized;
+    }
+
+    if (!response.device_id || response.device_id_len != BackendClient::DeviceIdSize ||
+        !response.firmware_hash || response.firmware_hash_len != BackendClient::FirmwareHashSize ||
+        !response.signature || response.signature_len == 0 || 
+        response.signature_len > BackendClient::MaxSignatureSize) {
+        return BackendStatus::InvalidArgument;
+    }
+
+    char url[BackendClient::UrlBufferSize];
+    snprintf(url, BackendClient::UrlBufferSize, "%s%s", config_.base_url, BackendClient::EndpointAttestationVerify);
+
+    // Encode binary fields as hex strings
+    char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
+    bytes_to_hex(response.device_id, BackendClient::DeviceIdSize, device_id_hex);
+
+    char firmware_hash_hex[BackendClient::FirmwareHashSize * 2 + 1];
+    bytes_to_hex(response.firmware_hash, BackendClient::FirmwareHashSize, firmware_hash_hex);
+
+    char signature_hex[BackendClient::MaxSignatureSize * 2 + 1];
+    bytes_to_hex(response.signature, response.signature_len, signature_hex);
+
+    // Build JSON body: {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
+    char json_body[BackendClient::AttestationVerifyJsonBodyBufferSize];
+    snprintf(json_body, BackendClient::AttestationVerifyJsonBodyBufferSize,
+             "{\"device_id\":\"%s\",\"firmware_hash\":\"%s\",\"signature\":\"%s\"}",
+             device_id_hex, firmware_hash_hex, signature_hex);
+
+    char response_buf[BackendClient::ResponseBufferSize];
+    HttpBuffer http_buf = { response_buf, 0, BackendClient::ResponseBufferSize - 1 };
+
+    esp_http_client_config_t http_config = {};
+    http_config.url = url;
+    http_config.method = HTTP_METHOD_POST;
+    http_config.timeout_ms = static_cast<int>(config_.timeout_ms);
+    http_config.event_handler = http_event_handler;
+    http_config.user_data = &http_buf;
+
+    esp_http_client_handle_t client = esp_http_client_init(&http_config);
+    if (!client) {
+        return BackendStatus::NetworkError;
+    }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_body, strlen(json_body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+            return BackendStatus::InvalidResponse;
+        }
+        if (err == ESP_ERR_HTTP_TIMEOUT) {
+            return BackendStatus::Timeout;
+        }
+        return BackendStatus::NetworkError;
+    }
+
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status_code != static_cast<int>(HttpStatusCode::Ok)) {
+        switch (status_code) {
+            case static_cast<int>(HttpStatusCode::BadRequest):
+            case static_cast<int>(HttpStatusCode::Unauthorized):
+            case static_cast<int>(HttpStatusCode::Forbidden):
+            case static_cast<int>(HttpStatusCode::NotFound):
+                return BackendStatus::InvalidResponse;
+            case static_cast<int>(HttpStatusCode::InternalServerError):
+                return BackendStatus::ServerError;
+            default:
+                return BackendStatus::InvalidResponse;
+        }
+    }
+
+    cJSON* root = cJSON_Parse(response_buf);
+    if (!root) {
+        return BackendStatus::InvalidResponse;
+    }
+
+    cJSON* granted_item = cJSON_GetObjectItem(root, BackendClient::JsonKeyGranted);
+    if (!granted_item || !cJSON_IsBool(granted_item)) {
+        cJSON_Delete(root);
+        return BackendStatus::InvalidResponse;
+    }
+
+    bool granted = cJSON_IsTrue(granted_item);
+    cJSON_Delete(root);
+
+    return granted ? BackendStatus::Ok : BackendStatus::Denied;
 }
 
 } // namespace zerotrust::backend

@@ -86,7 +86,7 @@ bool SystemController::on_attestation_challenge(const uint8_t* nonce,
 
     switch (status) {
         case attestation::AttestationStatus::Ok:
-            process_event_or_lock(fsm_, system_state::SystemEvent::AttestationSucceeded);
+            // Not finished yet, wait for backend response
             return true;
         case attestation::AttestationStatus::IdentityMissing:
         case attestation::AttestationStatus::KeyMissing:
@@ -101,6 +101,31 @@ bool SystemController::on_attestation_challenge(const uint8_t* nonce,
         default:
             // Unreachable, silences compiler warning
             return false;
+    }
+}
+
+void SystemController::on_attestation_verify_result(backend::BackendStatus status)
+{
+    switch (status) {
+        case backend::BackendStatus::Ok:
+            process_event_or_lock(fsm_, system_state::SystemEvent::AttestationSucceeded);
+            break;
+
+        case backend::BackendStatus::Denied:
+            process_event_or_lock(fsm_, system_state::SystemEvent::AttestationFailed);
+            break;
+
+        case backend::BackendStatus::Timeout:
+        case backend::BackendStatus::NetworkError:
+            // Transient error - retry allowed
+            break;
+
+        case backend::BackendStatus::InvalidResponse:
+        case backend::BackendStatus::ServerError:
+        default:
+            // Protocol / backend violation - lock device
+            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+            break;
     }
 }
 
