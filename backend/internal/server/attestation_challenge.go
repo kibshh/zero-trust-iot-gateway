@@ -4,10 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-)
 
-const (
-	DeviceIDRawSize = 16
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/attestation"
 )
 
 type challengeRequest struct {
@@ -36,7 +34,7 @@ func (s *Server) handleAttestationChallenge(w http.ResponseWriter, r *http.Reque
 	// Validate device_id format (hex, 16 bytes)
 	// Device ID will be used as a string but here it's validated if it's a valid hex string.
 	rawID, err := hex.DecodeString(req.DeviceID)
-	if err != nil || len(rawID) != DeviceIDRawSize {
+	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}

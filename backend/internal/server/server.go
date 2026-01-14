@@ -172,32 +172,6 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(`{"error":"not implemented"}`))
 }
 
-// Attestation verification handler
-// Device sends attestation response (device_id, firmware_hash, signature)
-// Backend verifies the response and returns authorization decision
-func (s *Server) handleAttestationVerify(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement attestation verification
-	// - Parse attestation response from device:
-	//   - device_id (16 bytes)
-	//   - firmware_hash (SHA-256, 32 bytes)
-	//   - signature (ECDSA P-256 DER-encoded, max 72 bytes)
-	// - Retrieve stored challenge (nonce) for this device
-	// - Verify signature against device public key (signed data: nonce || device_id || firmware_hash)
-	// - Verify firmware hash against known good hashes (whitelist)
-	// - Check if firmware version is allowed/not revoked
-	// - Return authorization decision: {"granted": true/false, "reason": "..."}
-	// - If granted, device can proceed to authorization state
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
 // Authorization request handler
 func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
