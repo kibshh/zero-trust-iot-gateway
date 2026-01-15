@@ -2,9 +2,7 @@ package attestation
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/sha256"
 	"errors"
 	"sync"
 	"time"
@@ -81,7 +79,7 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 	}
 
 	// Lookup device public key (stub for now)
-	pubKey, err := s.lookupPublicKey(req.DeviceID)
+	pubKeyDER, err := s.lookupPublicKey(req.DeviceID)
 	if err != nil {
 		return VerifyResult{Granted: false}, nil
 	}
@@ -92,7 +90,7 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 	buf = append(buf, []byte(req.DeviceID)...)
 	buf = append(buf, req.FirmwareHash...)
 
-	if !s.verifyECDSAP256(pubKey, buf, req.SignatureDER) {
+	if !VerifyECDSAP256(pubKeyDER, buf, req.SignatureDER) {
 		return VerifyResult{Granted: false}, nil
 	}
 
@@ -103,20 +101,11 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 	return VerifyResult{Granted: true}, nil
 }
 
-// lookupPublicKey retrieves the device's public key (stub implementation)
-func (s *memoryService) lookupPublicKey(deviceID string) (*ecdsa.PublicKey, error) {
+// lookupPublicKey retrieves the device's public key in DER-encoded SPKI format (stub implementation)
+func (s *memoryService) lookupPublicKey(deviceID string) ([]byte, error) {
 	// TODO: Implement actual device lookup from device service
 	// For now, return error to deny all requests
 	return nil, ErrDeviceUnknown
-}
-
-// verifyECDSAP256 verifies an ECDSA P-256 signature
-func (s *memoryService) verifyECDSAP256(pubKey *ecdsa.PublicKey, message []byte, signatureDER []byte) bool {
-	// Hash the message
-	hash := sha256.Sum256(message)
-
-	// Verify signature (signatureDER is ASN.1 encoded as SEQUENCE { r INTEGER, s INTEGER })
-	return ecdsa.VerifyASN1(pubKey, hash[:], signatureDER)
 }
 
 // isFirmwareAllowed checks if firmware hash is in the whitelist (stub implementation)
