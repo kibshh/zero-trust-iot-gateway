@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/attestation"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/audit"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/device"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/policy"
-	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/audit"
 )
 
 // Server represents the HTTP server for the zero-trust IoT gateway backend
@@ -18,9 +18,10 @@ type Server struct {
 	httpServer     *http.Server
 	addr           string
 
+	registry       attestation.PublicKeyRegistry
 	attestationSvc attestation.Service
-	deviceSvc 	   device.Service
-	policySvc 	   policy.Service
+	deviceSvc      device.Service
+	policySvc      policy.Service
 	auditSink      audit.Sink
 }
 
@@ -141,24 +142,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
-}
-
-// Device registration handler
-func (s *Server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement device registration
-	// - Parse device public key
-	// - Generate device ID
-	// - Store device identity
-	// - Return device ID
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
 }
 
 // Device operations handler (GET, DELETE, etc.)

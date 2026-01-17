@@ -3,6 +3,7 @@ package attestation
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
@@ -24,11 +25,13 @@ const (
 type memoryService struct {
 	mu         sync.Mutex
 	challenges map[string]Challenge
+	registry   PublicKeyRegistry
 }
 
-func NewMemoryService() Service {
+func NewMemoryService(registry PublicKeyRegistry) *memoryService {
 	return &memoryService{
 		challenges: make(map[string]Challenge),
+		registry:   registry,
 	}
 }
 
@@ -78,16 +81,20 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 		return VerifyResult{Granted: false}, nil
 	}
 
-	// Lookup device public key (stub for now)
-	pubKeyDER, err := s.lookupPublicKey(req.DeviceID)
+	pubKeyDER, err := s.registry.Lookup(req.DeviceID)
 	if err != nil {
+		return VerifyResult{Granted: false}, nil
+	}
+
+	rawID, err := hex.DecodeString(req.DeviceID)
+	if err != nil || len(rawID) != DeviceIDSize {
 		return VerifyResult{Granted: false}, nil
 	}
 
 	// Rebuild canonical buffer: nonce || device_id || firmware_hash
 	buf := make([]byte, 0, NonceSize+DeviceIDSize+FirmwareHashSize)
 	buf = append(buf, ch.Nonce...)
-	buf = append(buf, []byte(req.DeviceID)...)
+	buf = append(buf, rawID...)
 	buf = append(buf, req.FirmwareHash...)
 
 	if !VerifyECDSAP256(pubKeyDER, buf, req.SignatureDER) {
@@ -99,13 +106,6 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 	}
 
 	return VerifyResult{Granted: true}, nil
-}
-
-// lookupPublicKey retrieves the device's public key in DER-encoded SPKI format (stub implementation)
-func (s *memoryService) lookupPublicKey(deviceID string) ([]byte, error) {
-	// TODO: Implement actual device lookup from device service
-	// For now, return error to deny all requests
-	return nil, ErrDeviceUnknown
 }
 
 // isFirmwareAllowed checks if firmware hash is in the whitelist (stub implementation)
