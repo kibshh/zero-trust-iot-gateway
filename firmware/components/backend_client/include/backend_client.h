@@ -11,6 +11,7 @@ namespace zerotrust::backend {
 enum class BackendStatus : uint8_t {
     Ok,
     Denied,
+    AlreadyExists,
     InvalidArgument,
     NotInitialized,
     NetworkError,
@@ -21,10 +22,12 @@ enum class BackendStatus : uint8_t {
 
 enum class HttpStatusCode : int {
     Ok = 200,
+    Created = 201,
     BadRequest = 400,
     Unauthorized = 401,
     Forbidden = 403,
     NotFound = 404,
+    Conflict = 409,
     InternalServerError = 500
 };
 
@@ -49,10 +52,13 @@ public:
     static constexpr size_t UrlBufferSize = 256;
     static constexpr size_t AttestationChallengeReqJsonBodyBufferSize = 64; // {"device_id":"<hex>"}
     static constexpr size_t AttestationVerifyJsonBodyBufferSize = 512; // {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
+    static constexpr size_t PublicKeyDerMax = 256;
+    static constexpr size_t RegisterDeviceJsonBodyBufferSize = 640; // {"device_id":"<hex>","public_key":"<hex>"}
     static constexpr size_t ResponseBufferSize = 256;
     static constexpr uint32_t DefaultTimeoutMs = 10000;
     static constexpr const char* EndpointAttestationChallenge = "/api/v1/attestation/challenge";
     static constexpr const char* EndpointAttestationVerify = "/api/v1/attestation/verify";
+    static constexpr const char* EndpointDeviceRegister = "/api/v1/devices/register";
     static constexpr const char* JsonKeyNonce = "nonce";
     static constexpr const char* JsonKeyGranted = "granted";
 
@@ -74,6 +80,18 @@ public:
     // response: attestation response containing device_id, firmware_hash, and signature
     // Returns Ok if verification succeeds, error status otherwise
     BackendStatus verify_attestation(const attestation::AttestationResponse& response);
+
+    // Register device with backend
+    // device_id: 16-byte device identifier
+    // device_id_len: length of device identifier in bytes
+    // public_key_der: DER-encoded public key
+    // public_key_len: length of public key in bytes
+    // Returns Ok on success or appropriate error status otherwise
+    BackendStatus register_device(
+        const uint8_t* device_id,
+        size_t device_id_len,
+        const uint8_t* public_key_der,
+        size_t public_key_len);
 
 private:
     bool initialized_;

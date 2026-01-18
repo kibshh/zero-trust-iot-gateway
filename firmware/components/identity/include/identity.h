@@ -81,6 +81,12 @@ public:
     // Returns true on success, false if identity is not present, len mismatch, or read fails
     bool get_device_id(uint8_t* id_out, size_t device_id_len) const;
 
+    // Get public key in DER format from NVS
+    // pub_key_out: Output buffer for public key (must be at least PublicKeyDerMax bytes)
+    // pub_key_len: in/out - buffer size on input, actual key length on output
+    // Returns true on success, false if keys not present or read fails
+    bool get_public_key_der(uint8_t* pub_key_out, size_t* pub_key_len) const;
+
 private:
     IdentityStatus identity_status_;
     KeyStatus key_status_;

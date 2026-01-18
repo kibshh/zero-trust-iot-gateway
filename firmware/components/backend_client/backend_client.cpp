@@ -281,5 +281,81 @@ BackendStatus BackendClient::verify_attestation(const attestation::AttestationRe
     return granted ? BackendStatus::Ok : BackendStatus::Denied;
 }
 
+BackendStatus BackendClient::register_device(
+    const uint8_t* device_id,
+    size_t device_id_len,
+    const uint8_t* public_key_der,
+    size_t public_key_len)
+{
+    if (!initialized_) {
+        return BackendStatus::NotInitialized;
+    }
+
+    if (!device_id || device_id_len != BackendClient::DeviceIdSize ||
+        !public_key_der || public_key_len == 0 || 
+        public_key_len > BackendClient::PublicKeyDerMax) {
+        return BackendStatus::InvalidArgument;
+    }
+
+    char url[BackendClient::UrlBufferSize];
+    snprintf(url, BackendClient::UrlBufferSize, "%s%s",
+             config_.base_url, BackendClient::EndpointDeviceRegister);
+
+    char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
+    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+
+    char public_key_hex[BackendClient::PublicKeyDerMax * 2 + 1];
+    bytes_to_hex(public_key_der, public_key_len, public_key_hex);
+
+    char json_body[BackendClient::RegisterDeviceJsonBodyBufferSize];
+    snprintf(json_body, BackendClient::RegisterDeviceJsonBodyBufferSize,
+             "{\"device_id\":\"%s\",\"public_key\":\"%s\"}",
+             device_id_hex, public_key_hex);
+
+    esp_http_client_config_t http_config = {};
+    http_config.url = url;
+    http_config.method = HTTP_METHOD_POST;
+    http_config.timeout_ms = static_cast<int>(config_.timeout_ms);
+
+    esp_http_client_handle_t client = esp_http_client_init(&http_config);
+    if (!client) {
+        return BackendStatus::NetworkError;
+    }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_body, strlen(json_body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        memset(public_key_hex, 0, sizeof(public_key_hex));
+        if (err == ESP_ERR_HTTP_TIMEOUT) {
+            return BackendStatus::Timeout;
+        }
+        return BackendStatus::NetworkError;
+    }
+
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    memset(public_key_hex, 0, sizeof(public_key_hex));
+
+    if (status_code == static_cast<int>(HttpStatusCode::Created)) {
+        return BackendStatus::Ok;
+    }
+
+    switch (status_code) {
+        case static_cast<int>(HttpStatusCode::Conflict):
+            return BackendStatus::AlreadyExists;
+        case static_cast<int>(HttpStatusCode::InternalServerError):
+            return BackendStatus::ServerError;
+        case static_cast<int>(HttpStatusCode::BadRequest):
+        case static_cast<int>(HttpStatusCode::Unauthorized):
+        case static_cast<int>(HttpStatusCode::Forbidden):
+        case static_cast<int>(HttpStatusCode::NotFound):
+        default:
+            return BackendStatus::InvalidResponse;
+    }
+}
+
 } // namespace zerotrust::backend
 

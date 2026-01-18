@@ -20,7 +20,8 @@ public:
     SystemController(system_state::SystemStateMachine& fsm,
                      identity::IdentityManager& identity,
                      attestation::AttestationEngine& attestation,
-                     policy::PolicyManager& policy_mgr);
+                     policy::PolicyManager& policy_mgr,
+                     backend::BackendClient& backend_client);
 
     // Called once at boot
     void on_boot();
@@ -51,6 +52,9 @@ public:
     policy::PolicyDecision authorize_action(policy::PolicyAction action,
                                             const policy::PolicyContext& ctx);
 
+    // Called when device is in IdentityReady state
+    bool try_register_device();
+
 private:
     // Handle policy decision outcome
     // Triggers PolicyViolation event if policy explicitly denies action
@@ -60,6 +64,7 @@ private:
     identity::IdentityManager& identity_;
     attestation::AttestationEngine& attestation_;
     policy::PolicyManager& policy_mgr_;
+    backend::BackendClient& backend_client_;
 };
 
 } // namespace zerotrust::system_controller

@@ -20,11 +20,13 @@ void process_event_or_lock(system_state::SystemStateMachine& fsm,
 SystemController::SystemController(system_state::SystemStateMachine& fsm,
                                    identity::IdentityManager& identity,
                                    attestation::AttestationEngine& attestation,
-                                   policy::PolicyManager& policy_mgr)
+                                   policy::PolicyManager& policy_mgr,
+                                   backend::BackendClient& backend_client)
     : fsm_(fsm),
       identity_(identity),
       attestation_(attestation),
-      policy_mgr_(policy_mgr) {}
+      policy_mgr_(policy_mgr),
+      backend_client_(backend_client) {}
 
 void SystemController::on_boot()
 {
@@ -242,6 +244,46 @@ void SystemController::on_policy_decision(
         source == policy::PolicyDecisionSource::Policy)
     {
         process_event_or_lock(fsm_, system_state::SystemEvent::PolicyViolation);
+    }
+}
+
+bool SystemController::try_register_device()
+{
+    if (fsm_.get_state() != system_state::SystemState::IdentityReady) {
+        return false;
+    }
+
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        return false;
+    }
+
+    uint8_t public_key[identity::IdentityManager::PublicKeyDerMax];
+    size_t public_key_len = sizeof(public_key);
+    if (!identity_.get_public_key_der(public_key, &public_key_len)) {
+        return false;
+    }
+
+    backend::BackendStatus status = backend_client_.register_device(
+        device_id, sizeof(device_id),
+        public_key, public_key_len);
+
+    switch (status) {
+        case backend::BackendStatus::Ok:
+        case backend::BackendStatus::AlreadyExists:
+            // Success or already registered - both are valid
+            return true;
+        case backend::BackendStatus::Timeout:
+        case backend::BackendStatus::NetworkError:
+            // Transient error - retry allowed
+            return false;
+        case backend::BackendStatus::InvalidArgument:
+        case backend::BackendStatus::InvalidResponse:
+        case backend::BackendStatus::ServerError:
+        default:
+            // Protocol / backend violation - lock device
+            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+            return false;
     }
 }
 

@@ -524,5 +524,39 @@ bool IdentityManager::get_device_id(uint8_t* id_out, size_t device_id_len) const
     return true;
 }
 
+bool IdentityManager::get_public_key_der(uint8_t* pub_key_out, size_t* pub_key_len) const
+{
+    if (!pub_key_out || !pub_key_len || *pub_key_len == 0) {
+        return false;
+    }
+
+    if (key_status_ != KeyStatus::Present) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(IdentityManager::NvsNamespace, NVS_READONLY, &handle);
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    size_t stored_size = 0;
+    error = nvs_get_blob(handle, IdentityManager::NvsKeyPublicKey, nullptr, &stored_size);
+    if (error != ESP_OK || stored_size == 0 || stored_size > *pub_key_len) {
+        nvs_close(handle);
+        return false;
+    }
+
+    error = nvs_get_blob(handle, IdentityManager::NvsKeyPublicKey, pub_key_out, &stored_size);
+    nvs_close(handle);
+
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    *pub_key_len = stored_size;
+    return true;
+}
+
 } // namespace zerotrust::identity
 
