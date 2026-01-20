@@ -55,6 +55,9 @@ public:
     // Called when device is in IdentityReady state
     bool try_register_device();
 
+    // Perform attestation flow: request challenge, generate response, verify
+    bool try_attest();
+
 private:
     // Handle policy decision outcome
     // Triggers PolicyViolation event if policy explicitly denies action

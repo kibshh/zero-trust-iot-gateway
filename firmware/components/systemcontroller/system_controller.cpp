@@ -1,5 +1,7 @@
 #include "system_controller.h"
 
+#include <cstring>
+
 namespace zerotrust::system_controller {
 
 namespace {
@@ -114,7 +116,8 @@ void SystemController::on_attestation_verify_result(backend::BackendStatus statu
             break;
 
         case backend::BackendStatus::Denied:
-            process_event_or_lock(fsm_, system_state::SystemEvent::AttestationFailed);
+            // Attestation rejected - could be firmware update in progress
+            // Allow retry, main loop can implement backoff
             break;
 
         case backend::BackendStatus::Timeout:
@@ -268,6 +271,8 @@ bool SystemController::try_register_device()
         device_id, sizeof(device_id),
         public_key, public_key_len);
 
+    memset(public_key, 0, public_key_len); // Secure zero after use
+
     switch (status) {
         case backend::BackendStatus::Ok:
         case backend::BackendStatus::AlreadyExists:
@@ -285,6 +290,59 @@ bool SystemController::try_register_device()
             process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
             return false;
     }
+}
+
+bool SystemController::try_attest()
+{
+    if (fsm_.get_state() != system_state::SystemState::IdentityReady) {
+        return false;
+    }
+
+    // Step 1: Get device ID for challenge request
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 2: Request attestation challenge from backend
+    backend::ChallengeResponse challenge_resp{};
+    backend::BackendStatus status = backend_client_.request_attestation_challenge(
+        device_id, sizeof(device_id), challenge_resp);
+
+    if (status != backend::BackendStatus::Ok) {
+        // Handle challenge request failure
+        switch (status) {
+            case backend::BackendStatus::Timeout:
+            case backend::BackendStatus::NetworkError:
+                // Transient error - retry allowed
+                return false;
+            case backend::BackendStatus::Denied:
+            case backend::BackendStatus::InvalidResponse:
+            case backend::BackendStatus::ServerError:
+            default:
+                // Protocol / backend violation - lock device
+                process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+                return false;
+        }
+    }
+
+    // Step 3: Generate attestation response using the nonce
+    attestation::AttestationResponse attest_resp{};
+    if (!on_attestation_challenge(challenge_resp.nonce, backend::BackendClient::NonceSize, attest_resp)) {
+        // on_attestation_challenge handles FSM transitions on critical failures
+        // Return false to indicate attestation did not complete
+        return false;
+    }
+
+    // Step 4: Send attestation response to backend for verification
+    status = backend_client_.verify_attestation(attest_resp);
+
+    // Step 5: Process verification result (handles FSM transitions)
+    on_attestation_verify_result(status);
+
+    // Return true only if we transitioned to Attested
+    return fsm_.get_state() == system_state::SystemState::Attested;
 }
 
 } // namespace zerotrust::system_controller
