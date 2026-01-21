@@ -50,17 +50,20 @@ public:
     static constexpr size_t FirmwareHashSize = 32; // SHA-256
     static constexpr size_t MaxSignatureSize = 72; // ECDSA P-256 DER max
     static constexpr size_t UrlBufferSize = 256;
+    static constexpr size_t PublicKeyDerMax = 256;
     static constexpr size_t AttestationChallengeReqJsonBodyBufferSize = 64; // {"device_id":"<hex>"}
     static constexpr size_t AttestationVerifyJsonBodyBufferSize = 512; // {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
-    static constexpr size_t PublicKeyDerMax = 256;
+    static constexpr size_t AuthorizationRequestJsonBodyBufferSize = 128; // {"device_id":"<hex>","firmware_hash":"<hex>"}
     static constexpr size_t RegisterDeviceJsonBodyBufferSize = 640; // {"device_id":"<hex>","public_key":"<hex>"}
     static constexpr size_t ResponseBufferSize = 256;
     static constexpr uint32_t DefaultTimeoutMs = 10000;
     static constexpr const char* EndpointAttestationChallenge = "/api/v1/attestation/challenge";
     static constexpr const char* EndpointAttestationVerify = "/api/v1/attestation/verify";
     static constexpr const char* EndpointDeviceRegister = "/api/v1/devices/register";
+    static constexpr const char* EndpointAuthorizationRequest = "/api/v1/authorization/request";
     static constexpr const char* JsonKeyNonce = "nonce";
     static constexpr const char* JsonKeyGranted = "granted";
+    static constexpr const char* JsonKeyAuthorized = "authorized";
 
     explicit BackendClient() : initialized_(false), config_{ nullptr, 0 } {}
     ~BackendClient() = default;
@@ -92,6 +95,18 @@ public:
         size_t device_id_len,
         const uint8_t* public_key_der,
         size_t public_key_len);
+
+    // Request authorization from backend
+    // device_id: 16-byte device identifier
+    // device_id_len: length of device identifier in bytes
+    // firmware_hash: 32-byte SHA-256 firmware hash
+    // firmware_hash_len: length of firmware hash in bytes
+    // Returns Ok if authorized, Denied if not authorized, error status otherwise
+    BackendStatus request_authorization(
+        const uint8_t* device_id,
+        size_t device_id_len,
+        const uint8_t* firmware_hash,
+        size_t firmware_hash_len);
 
 private:
     bool initialized_;
