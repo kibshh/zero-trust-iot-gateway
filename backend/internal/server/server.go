@@ -155,24 +155,6 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(`{"error":"not implemented"}`))
 }
 
-// Authorization request handler
-func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement authorization request
-	// - Verify device identity
-	// - Check attestation status
-	// - Evaluate authorization policy
-	// - Return authorization decision (granted/denied)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
 // Policy issue handler
 func (s *Server) handlePolicyIssue(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
