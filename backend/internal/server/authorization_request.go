@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/attestation"
@@ -47,7 +48,15 @@ func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	authorized := device.IsFirmwareAuthorized(req.DeviceID, firmwareHash)
+	// Check authorization
+	err = s.authorizer.Authorize(req.DeviceID, firmwareHash)
+
+	// Distinguish policy denial from system error
+	authorized := err == nil
+	if err != nil && !isAuthorizationDenial(err) {
+		http.Error(w, "authorization check failed", http.StatusInternalServerError)
+		return
+	}
 
 	resp := authorizationResponse{
 		Authorized: authorized,
@@ -55,6 +64,15 @@ func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// isAuthorizationDenial returns true if the error is a policy denial (not a system error)
+func isAuthorizationDenial(err error) bool {
+	return errors.Is(err, device.ErrDeviceNotFound) ||
+		errors.Is(err, device.ErrDeviceRevoked) ||
+		errors.Is(err, device.ErrNoActivePolicy) ||
+		errors.Is(err, device.ErrFirmwareNotWhitelisted) ||
+		errors.Is(err, device.ErrFirmwareVersionRollback)
 }
 
 

@@ -38,6 +38,13 @@ func run(ctx context.Context) error {
 	// TODO: Initialize configuration
 	// TODO: Initialize database/storage
 
+	// Initialize stores
+	deviceStore := device.NewMemoryStore()
+	policyStore := policy.NewMemoryStore()
+
+	// Initialize authorizer
+	authorizer := device.NewAuthorizer(deviceStore, policyStore)
+
 	// TODO: Initialize device management service
 	var deviceSvc device.Service = nil // TODO: implement device service
 
@@ -55,6 +62,7 @@ func run(ctx context.Context) error {
 	srv := server.New(
 		cfg,
 		attestationSvc,
+		authorizer,
 		deviceSvc,
 		policySvc,
 		auditSink,

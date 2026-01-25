@@ -20,6 +20,7 @@ type Server struct {
 
 	registry       attestation.PublicKeyRegistry
 	attestationSvc attestation.Service
+	authorizer     *device.Authorizer
 	deviceSvc      device.Service
 	policySvc      policy.Service
 	auditSink      audit.Sink
@@ -49,6 +50,7 @@ func DefaultConfig() Config {
 func New(
 	cfg Config,
 	attestationSvc attestation.Service,
+	authorizer *device.Authorizer,
 	deviceSvc device.Service,
 	policySvc policy.Service,
 	auditSink audit.Sink,
@@ -59,6 +61,7 @@ func New(
 	server := &Server{
 		addr:           addr,
 		attestationSvc: attestationSvc,
+		authorizer:     authorizer,
 		deviceSvc:      deviceSvc,
 		policySvc:      policySvc,
 		auditSink:      auditSink,
