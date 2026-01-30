@@ -25,7 +25,7 @@ enum class KeyAlgorithm : uint8_t {
 
 // Metadata about NVS keys
 struct KeyMeta {
-    uint8_t algorithm;
+    KeyAlgorithm algorithm;
 };
 
 // Device identity manager
