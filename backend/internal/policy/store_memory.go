@@ -16,6 +16,18 @@ func NewMemoryStore() Store {
 	}
 }
 
+func (s *memoryStore) Load(deviceID string) (*Policy, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	pol, ok := s.policies[deviceID]
+	if !ok {
+		return nil, ErrPolicyNotFound
+	}
+
+	return pol, nil
+}
+
 func (s *memoryStore) LoadActive(deviceID string) (*Policy, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
