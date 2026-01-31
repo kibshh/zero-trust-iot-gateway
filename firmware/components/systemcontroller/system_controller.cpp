@@ -134,20 +134,6 @@ void SystemController::on_attestation_verify_result(backend::BackendStatus statu
     }
 }
 
-void SystemController::on_authorization_result(bool granted)
-{
-    if (fsm_.get_state() != system_state::SystemState::Attested) {
-        // Authorization is only allowed in Attested state
-        return;
-    }
-
-    if (granted) {
-        process_event_or_lock(fsm_, system_state::SystemEvent::AuthorizationGranted);
-    } else {
-        process_event_or_lock(fsm_, system_state::SystemEvent::AuthorizationDenied);
-    }
-}
-
 void SystemController::on_policy_blob_received(const uint8_t* data, size_t len)
 {
     // Basic sanity check (backend bug / transport corruption)
@@ -343,6 +329,104 @@ bool SystemController::try_attest()
 
     // Return true only if we transitioned to Attested
     return fsm_.get_state() == system_state::SystemState::Attested;
+}
+
+bool SystemController::try_authorize()
+{
+    if (fsm_.get_state() != system_state::SystemState::Attested) {
+        return false;
+    }
+
+    // Step 1: Get device ID
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 2: Get firmware hash
+    uint8_t firmware_hash[attestation::AttestationEngine::FirmwareHashSize];
+    if (!attestation::AttestationEngine::get_firmware_hash(firmware_hash)) {
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 3: Request authorization from backend
+    backend::AuthorizationResponse auth_resp{};
+    backend::BackendStatus status = backend_client_.request_authorization(
+        device_id, sizeof(device_id),
+        firmware_hash, sizeof(firmware_hash),
+        auth_resp);
+
+    if (status != backend::BackendStatus::Ok) {
+        // Handle backend request failure
+        switch (status) {
+            case backend::BackendStatus::Timeout:
+            case backend::BackendStatus::NetworkError:
+                // Transient error - retry allowed
+                return false;
+            case backend::BackendStatus::InvalidResponse:
+            case backend::BackendStatus::ServerError:
+            default:
+                // Protocol / backend violation - lock device
+                process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+                return false;
+        }
+    }
+
+    // Step 4: Check if authorized
+    if (!auth_resp.authorized) {
+        // Backend explicitly denied authorization
+        process_event_or_lock(fsm_, system_state::SystemEvent::AuthorizationDenied);
+        return false;
+    }
+
+    // Step 5: Verify the policy blob
+    if (auth_resp.policy_blob_len == 0) {
+        // Authorized but no policy blob - protocol error
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 6: Get backend public key for signature verification
+    uint8_t backend_pubkey[policy::PolicyManager::MaxBackendPubKeySize];
+    size_t pubkey_len = policy_mgr_.get_backend_public_key(
+        backend_pubkey, sizeof(backend_pubkey));
+    if (pubkey_len == 0) {
+        // No backend public key - cannot verify policy
+        // This is a provisioning issue, not a transient error
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 7: Verify policy blob using PolicyVerifier
+    policy::AuthPolicy auth_policy{};
+    
+    // Get current time (0 = clock not set, skip time checks)
+    // TODO: Implement proper time sync
+    uint64_t current_time = 0;
+    
+    // Firmware version for anti-rollback (TODO: implement proper versioning)
+    uint64_t firmware_version = 0;
+
+    if (!policy_verifier_.verify_and_validate(
+            auth_resp.policy_blob, auth_resp.policy_blob_len,
+            backend_pubkey, pubkey_len,
+            device_id,
+            firmware_hash,
+            firmware_version,
+            current_time,
+            &auth_policy)) {
+        // Policy verification failed - security violation
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 8: Authorization successful - transition to Authorized state
+    process_event_or_lock(fsm_, system_state::SystemEvent::AuthorizationGranted);
+
+    // Return true only if we transitioned to Authorized
+    return fsm_.get_state() == system_state::SystemState::Authorized;
 }
 
 } // namespace zerotrust::system_controller

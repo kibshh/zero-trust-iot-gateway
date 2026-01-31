@@ -361,8 +361,13 @@ BackendStatus BackendClient::request_authorization(
     const uint8_t* device_id,
     size_t device_id_len,
     const uint8_t* firmware_hash,
-    size_t firmware_hash_len)
+    size_t firmware_hash_len,
+    AuthorizationResponse& out_response)
 {
+    // Initialize output
+    out_response.authorized = false;
+    out_response.policy_blob_len = 0;
+
     if (!initialized_) {
         return BackendStatus::NotInitialized;
     }
@@ -439,16 +444,40 @@ BackendStatus BackendClient::request_authorization(
         return BackendStatus::InvalidResponse;
     }
 
+    // Parse "authorized" field (required)
     cJSON* authorized_item = cJSON_GetObjectItem(root, BackendClient::JsonKeyAuthorized);
     if (!authorized_item || !cJSON_IsBool(authorized_item)) {
         cJSON_Delete(root);
         return BackendStatus::InvalidResponse;
     }
 
-    bool authorized = cJSON_IsTrue(authorized_item);
-    cJSON_Delete(root);
+    out_response.authorized = cJSON_IsTrue(authorized_item);
 
-    return authorized ? BackendStatus::Ok : BackendStatus::Denied;
+    // Parse "policy" field (required when authorized)
+    if (out_response.authorized) {
+        cJSON* policy_item = cJSON_GetObjectItem(root, BackendClient::JsonKeyPolicy);
+        if (!policy_item || !cJSON_IsString(policy_item)) {
+            cJSON_Delete(root);
+            return BackendStatus::InvalidResponse;
+        }
+
+        const char* policy_hex = policy_item->valuestring;
+        size_t hex_len = strlen(policy_hex);
+
+        if (hex_len == 0 || (hex_len % 2) != 0 ||
+            (hex_len / 2) > BackendClient::PolicyBlobMaxSize ||
+            !hex_to_bytes(policy_hex, hex_len,
+                          out_response.policy_blob,
+                          BackendClient::PolicyBlobMaxSize)) {
+            cJSON_Delete(root);
+            return BackendStatus::InvalidResponse;
+        }
+
+        out_response.policy_blob_len = hex_len / 2;
+    }
+
+    cJSON_Delete(root);
+    return BackendStatus::Ok;
 }
 
 } // namespace zerotrust::backend

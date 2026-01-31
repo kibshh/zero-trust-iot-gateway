@@ -9,6 +9,7 @@
 #include "attestation.h"
 #include "policy_types.h"
 #include "policy_manager.h"
+#include "policy_verifier.h"
 #include "backend_client.h"
 
 namespace zerotrust::system_controller {
@@ -34,9 +35,6 @@ public:
     // Called when backend responds with attestation verification result
     void on_attestation_verify_result(backend::BackendStatus status);
 
-    // Called when backend responds with authorization decision
-    void on_authorization_result(bool granted);
-
     // Called when policy blob is received from backend
     // Loads, verifies, persists and activates the policy
     void on_policy_blob_received(const uint8_t* data, size_t len);
@@ -58,6 +56,10 @@ public:
     // Perform attestation flow: request challenge, generate response, verify
     bool try_attest();
 
+    // Perform authorization flow: request authorization, verify policy blob
+    // Returns true if device transitioned to Authorized state
+    bool try_authorize();
+
 private:
     // Handle policy decision outcome
     // Triggers PolicyViolation event if policy explicitly denies action
@@ -68,6 +70,7 @@ private:
     attestation::AttestationEngine& attestation_;
     policy::PolicyManager& policy_mgr_;
     backend::BackendClient& backend_client_;
+    policy::PolicyVerifier policy_verifier_;  // Reusable verifier instance
 };
 
 } // namespace zerotrust::system_controller

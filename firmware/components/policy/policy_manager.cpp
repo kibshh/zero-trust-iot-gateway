@@ -630,6 +630,31 @@ bool PolicyManager::has_backend_public_key() const
     return error == ESP_OK && key_size > 0;
 }
 
+size_t PolicyManager::get_backend_public_key(uint8_t* out_key, size_t out_capacity) const
+{
+    if (!out_key || out_capacity == 0) {
+        return 0;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(PolicyManager::NvsNamespace, NVS_READONLY, &handle);
+    if (error != ESP_OK) {
+        return 0;
+    }
+
+    size_t key_size = 0;
+    error = nvs_get_blob(handle, PolicyManager::NvsKeyBackendPubKey, nullptr, &key_size);
+    if (error != ESP_OK || key_size == 0 || key_size > out_capacity) {
+        nvs_close(handle);
+        return 0;
+    }
+
+    error = nvs_get_blob(handle, PolicyManager::NvsKeyBackendPubKey, out_key, &key_size);
+    nvs_close(handle);
+
+    return (error == ESP_OK) ? key_size : 0;
+}
+
 bool PolicyManager::is_policy_expired() const
 {
     if (!policy_active_) {

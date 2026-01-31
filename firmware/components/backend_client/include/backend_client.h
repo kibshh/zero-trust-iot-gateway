@@ -43,6 +43,13 @@ struct ChallengeResponse {
     uint8_t nonce[32];          // 32-byte nonce from backend (fixed size)
 };
 
+// Authorization response from backend
+struct AuthorizationResponse {
+    bool authorized;            // Whether device is authorized
+    uint8_t policy_blob[1024];  // Packed signed policy blob (if authorized)
+    size_t policy_blob_len;     // Actual length of policy blob (0 if not authorized)
+};
+
 class BackendClient {
 public:
     static constexpr size_t DeviceIdSize = 16;
@@ -55,7 +62,8 @@ public:
     static constexpr size_t AttestationVerifyJsonBodyBufferSize = 512; // {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
     static constexpr size_t AuthorizationRequestJsonBodyBufferSize = 128; // {"device_id":"<hex>","firmware_hash":"<hex>"}
     static constexpr size_t RegisterDeviceJsonBodyBufferSize = 640; // {"device_id":"<hex>","public_key":"<hex>"}
-    static constexpr size_t ResponseBufferSize = 256;
+    static constexpr size_t ResponseBufferSize = 2560;  // Increased for policy blob
+    static constexpr size_t PolicyBlobMaxSize = 1024;   // Max size of packed policy blob
     static constexpr uint32_t DefaultTimeoutMs = 10000;
     static constexpr const char* EndpointAttestationChallenge = "/api/v1/attestation/challenge";
     static constexpr const char* EndpointAttestationVerify = "/api/v1/attestation/verify";
@@ -64,6 +72,7 @@ public:
     static constexpr const char* JsonKeyNonce = "nonce";
     static constexpr const char* JsonKeyGranted = "granted";
     static constexpr const char* JsonKeyAuthorized = "authorized";
+    static constexpr const char* JsonKeyPolicy = "policy";
 
     explicit BackendClient() : initialized_(false), config_{ nullptr, 0 } {}
     ~BackendClient() = default;
@@ -101,12 +110,14 @@ public:
     // device_id_len: length of device identifier in bytes
     // firmware_hash: 32-byte SHA-256 firmware hash
     // firmware_hash_len: length of firmware hash in bytes
-    // Returns Ok if authorized, Denied if not authorized, error status otherwise
+    // out_response: populated with authorization result and policy blob on success
+    // Returns Ok on success, error status otherwise
     BackendStatus request_authorization(
         const uint8_t* device_id,
         size_t device_id_len,
         const uint8_t* firmware_hash,
-        size_t firmware_hash_len);
+        size_t firmware_hash_len,
+        AuthorizationResponse& out_response);
 
 private:
     bool initialized_;

@@ -40,6 +40,7 @@ public:
     static constexpr size_t FirmwareReadChunkSize = 256;  // Buffer size for reading firmware partition in chunks
     static constexpr size_t CanonicalSignBufferSize = 256;  // Buffer size for canonical attestation data (nonce || device_id || firmware_hash)
     static constexpr size_t MaxSignatureDerSize = 72;  // Maximum size for ECDSA P-256 signature in DER format
+    static constexpr size_t FirmwareHashSize = 32;  // SHA-256 hash size
 
     explicit AttestationEngine(identity::IdentityManager& identity) : identity_(identity) {};
 
@@ -50,6 +51,15 @@ public:
     AttestationStatus generate_response(
         const AttestationChallenge& challenge,
         AttestationResponse& response);
+
+    // Get the current firmware hash (SHA-256 of running app partition)
+    // Hash is computed once and cached - subsequent calls return cached value
+    // out_hash: buffer to store 32-byte hash
+    // Returns true on success, false on error
+    static bool get_firmware_hash(uint8_t* out_hash);
+
+    // Invalidate cached firmware hash (call after OTA before reboot)
+    static void invalidate_firmware_hash_cache();
 
 private:
     identity::IdentityManager& identity_; // Reference because identity is system-owned

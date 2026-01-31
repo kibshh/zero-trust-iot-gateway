@@ -16,7 +16,8 @@ type authorizationRequest struct {
 }
 
 type authorizationResponse struct {
-	Authorized bool `json:"authorized"`
+	Authorized bool   `json:"authorized"`
+	Policy     string `json:"policy,omitempty"` // hex-encoded signed policy blob (only if authorized)
 }
 
 // Authorization request handler
@@ -60,6 +61,17 @@ func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Reque
 
 	resp := authorizationResponse{
 		Authorized: authorized,
+	}
+
+	// If authorized, issue signed policy blob
+	if authorized {
+		policyBlob, err := s.policySvc.Issue(r.Context(), req.DeviceID)
+		if err != nil {
+			// Policy issuance failed - this is a system error
+			http.Error(w, "policy issuance failed", http.StatusInternalServerError)
+			return
+		}
+		resp.Policy = hex.EncodeToString(policyBlob)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

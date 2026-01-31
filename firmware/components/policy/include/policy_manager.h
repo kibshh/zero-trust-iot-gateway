@@ -34,6 +34,10 @@ public:
     bool has_backend_public_key() const;
     bool is_policy_expired() const;
 
+    // Get backend public key (DER-encoded ECDSA P-256)
+    // Returns actual key length, or 0 if not available
+    size_t get_backend_public_key(uint8_t* out_key, size_t out_capacity) const;
+
     // Provision backend public key (DER-encoded ECDSA P-256, called once during provisioning)
     bool set_backend_public_key(const uint8_t* key, size_t len);
 

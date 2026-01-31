@@ -9,6 +9,11 @@ namespace zerotrust::attestation {
 
 namespace {
 
+// Cached firmware hash (computed once, reused)
+// Firmware doesn't change at runtime (unless OTA reboot)
+static uint8_t firmware_hash_cache[AttestationEngine::FirmwareHashSize];
+static bool firmware_hash_valid = false;
+
 // Hash currently running firmware (app partition) to produce attestation measurement
 // Reads firmware in chunks and computes SHA-256 hash of entire partition
 bool compute_firmware_hash(uint8_t* out_hash)
@@ -76,6 +81,19 @@ bool compute_firmware_hash(uint8_t* out_hash)
     return true;
 }
 
+// Get firmware hash, computing and caching if needed
+bool get_firmware_hash_cached(uint8_t* out_hash)
+{
+    if (!firmware_hash_valid) {
+        if (!compute_firmware_hash(firmware_hash_cache)) {
+            return false;
+        }
+        firmware_hash_valid = true;
+    }
+    memcpy(out_hash, firmware_hash_cache, sizeof(firmware_hash_cache));
+    return true;
+}
+
 } // anonymous namespace
 
 AttestationStatus AttestationEngine::generate_response(
@@ -97,10 +115,11 @@ AttestationStatus AttestationEngine::generate_response(
         return AttestationStatus::KeyMissing;
     }
 
-    // Step 1: Compute firmware hash (attestation measurement)
+    // Step 1: Get firmware hash (attestation measurement)
     // This proves what firmware version is running on the device
+    // Hash is computed once and cached - firmware doesn't change at runtime
     static uint8_t firmware_hash[identity::IdentityManager::Sha256HashSize];
-    if (!compute_firmware_hash(firmware_hash)) {
+    if (!get_firmware_hash_cached(firmware_hash)) {
         return AttestationStatus::InternalError;
     }
 
@@ -161,6 +180,20 @@ AttestationStatus AttestationEngine::generate_response(
     response.signature_len = sig_len;
 
     return AttestationStatus::Ok;
+}
+
+bool AttestationEngine::get_firmware_hash(uint8_t* out_hash)
+{
+    if (!out_hash) {
+        return false;
+    }
+    return get_firmware_hash_cached(out_hash);
+}
+
+void AttestationEngine::invalidate_firmware_hash_cache()
+{
+    firmware_hash_valid = false;
+    memset(firmware_hash_cache, 0, sizeof(firmware_hash_cache));
 }
 
 } // namespace zerotrust::attestation
