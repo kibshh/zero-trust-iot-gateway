@@ -18,6 +18,8 @@ const (
 	TimestampSize    = 8
 	VersionFieldSize = 8
 	HashCountSize    = 1
+	// Signed blob wire format: [payload_len:2][payload][sig_len:2][signature]
+	LengthFieldSize = 2 // uint16 little-endian
 )
 
 var (
@@ -30,6 +32,70 @@ var (
 type SignedPolicy struct {
 	Payload   []byte // Canonical binary payload (without signature)
 	Signature []byte // ECDSA P-256 DER signature
+}
+
+// Pack serializes a SignedPolicy into wire format:
+// [payload_len:2 LE][payload][sig_len:2 LE][signature]
+func (sp *SignedPolicy) Pack() []byte {
+	totalLen := LengthFieldSize + len(sp.Payload) + LengthFieldSize + len(sp.Signature)
+	buf := make([]byte, totalLen)
+	offset := 0
+
+	// Payload length (little-endian)
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(sp.Payload)))
+	offset += LengthFieldSize
+
+	// Payload
+	copy(buf[offset:], sp.Payload)
+	offset += len(sp.Payload)
+
+	// Signature length (little-endian)
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(sp.Signature)))
+	offset += LengthFieldSize
+
+	// Signature
+	copy(buf[offset:], sp.Signature)
+
+	return buf
+}
+
+// UnpackSignedBlob deserializes wire format into a SignedPolicy
+func UnpackSignedBlob(blob []byte) (*SignedPolicy, error) {
+	if len(blob) < LengthFieldSize*2 {
+		return nil, errors.New("blob too short")
+	}
+
+	offset := 0
+
+	// Payload length
+	payloadLen := int(binary.LittleEndian.Uint16(blob[offset:]))
+	offset += LengthFieldSize
+
+	if len(blob) < offset+payloadLen+LengthFieldSize {
+		return nil, errors.New("blob too short for payload")
+	}
+
+	// Payload
+	payload := make([]byte, payloadLen)
+	copy(payload, blob[offset:offset+payloadLen])
+	offset += payloadLen
+
+	// Signature length
+	sigLen := int(binary.LittleEndian.Uint16(blob[offset:]))
+	offset += LengthFieldSize
+
+	if len(blob) != offset+sigLen {
+		return nil, errors.New("blob size mismatch")
+	}
+
+	// Signature
+	signature := make([]byte, sigLen)
+	copy(signature, blob[offset:offset+sigLen])
+
+	return &SignedPolicy{
+		Payload:   payload,
+		Signature: signature,
+	}, nil
 }
 
 // Builder constructs canonical policy payloads
