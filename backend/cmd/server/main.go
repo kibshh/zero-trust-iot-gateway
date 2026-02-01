@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"log"
 	"os"
 	"os/signal"
@@ -51,8 +54,22 @@ func run(ctx context.Context) error {
 	// TODO: Initialize attestation service
 	var attestationSvc attestation.Service = nil // TODO: implement attestation service
 
-	// TODO: Initialize policy management service
-	var policySvc policy.Service = nil // TODO: implement policy service
+	// Initialize policy signing key (dev mode: generate ephemeral key)
+	// TODO: Load from secure storage in production
+	signingKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	log.Println("WARNING: Using ephemeral signing key (dev mode)")
+
+	// Initialize policy service
+	policyBuilder := policy.NewBuilder()
+	policySigner, err := policy.NewSignerFromKey(signingKey)
+	if err != nil {
+		return err
+	}
+	deviceSource := device.NewDeviceSourceAdapter(deviceStore)
+	policySvc := policy.NewPolicyService(policyBuilder, policySigner, policyStore, deviceSource)
 
 	// TODO: Initialize audit sink
 	var auditSink audit.Sink = nil // TODO: implement audit sink
