@@ -23,16 +23,48 @@ const (
 // memoryService is an in-memory attestation challenge store.
 // It is NOT persistent and is intended only for initial backend bring-up.
 type memoryService struct {
-	mu         sync.Mutex
-	challenges map[string]Challenge
-	registry   PublicKeyRegistry
+	mu                sync.Mutex
+	challenges        map[string]Challenge
+	registry          PublicKeyRegistry
+	firmwareWhitelist map[[FirmwareHashSize]byte]struct{}
 }
 
 func NewMemoryService(registry PublicKeyRegistry) *memoryService {
 	return &memoryService{
-		challenges: make(map[string]Challenge),
-		registry:   registry,
+		challenges:        make(map[string]Challenge),
+		registry:          registry,
+		firmwareWhitelist: make(map[[FirmwareHashSize]byte]struct{}),
 	}
+}
+
+// AddFirmwareHash adds a firmware hash to the whitelist
+func (s *memoryService) AddFirmwareHash(hash []byte) error {
+	if len(hash) != FirmwareHashSize {
+		return errors.New("invalid firmware hash size")
+	}
+
+	var key [FirmwareHashSize]byte
+	copy(key[:], hash)
+
+	s.mu.Lock()
+	s.firmwareWhitelist[key] = struct{}{}
+	s.mu.Unlock()
+
+	return nil
+}
+
+// RemoveFirmwareHash removes a firmware hash from the whitelist
+func (s *memoryService) RemoveFirmwareHash(hash []byte) {
+	if len(hash) != FirmwareHashSize {
+		return
+	}
+
+	var key [FirmwareHashSize]byte
+	copy(key[:], hash)
+
+	s.mu.Lock()
+	delete(s.firmwareWhitelist, key)
+	s.mu.Unlock()
 }
 
 func (s *memoryService) CreateChallenge(ctx context.Context, deviceID string) (Challenge, error) {
@@ -108,10 +140,19 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 	return VerifyResult{Granted: true}, nil
 }
 
-// isFirmwareAllowed checks if firmware hash is in the whitelist (stub implementation)
+// isFirmwareAllowed checks if firmware hash is in the whitelist
 func (s *memoryService) isFirmwareAllowed(firmwareHash []byte) bool {
-	// TODO: Implement actual firmware whitelist check
-	// For now, deny all firmware
-	return false
+	if len(firmwareHash) != FirmwareHashSize {
+		return false
+	}
+
+	var key [FirmwareHashSize]byte
+	copy(key[:], firmwareHash)
+
+	s.mu.Lock()
+	_, allowed := s.firmwareWhitelist[key]
+	s.mu.Unlock()
+
+	return allowed
 }
 
