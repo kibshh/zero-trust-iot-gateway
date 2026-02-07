@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "time_sync.h"
+
 namespace zerotrust::system_controller {
 
 namespace {
@@ -402,9 +404,8 @@ bool SystemController::try_authorize()
     // Step 7: Verify policy blob using PolicyVerifier
     policy::AuthPolicy auth_policy{};
     
-    // Get current time (0 = clock not set, skip time checks)
-    // TODO: Implement proper time sync
-    uint64_t current_time = 0;
+    // Get current time from NTP (0 if not synchronized - policy verifier will skip time checks)
+    uint64_t current_time = time_sync::TimeSync::get_unix_time();
     
     // Firmware version for anti-rollback (TODO: implement proper versioning)
     uint64_t firmware_version = 0;
@@ -427,6 +428,26 @@ bool SystemController::try_authorize()
 
     // Return true only if we transitioned to Authorized
     return fsm_.get_state() == system_state::SystemState::Authorized;
+}
+
+bool SystemController::init_time_sync(const time_sync::TimeSyncConfig* config,
+                                      bool wait_for_sync,
+                                      uint32_t timeout_ms)
+{
+    if (!time_sync::TimeSync::init(config)) {
+        return false;
+    }
+
+    if (wait_for_sync) {
+        return time_sync::TimeSync::wait_for_sync(timeout_ms);
+    }
+
+    return true;
+}
+
+bool SystemController::is_time_synchronized() const
+{
+    return time_sync::TimeSync::is_synchronized();
 }
 
 } // namespace zerotrust::system_controller

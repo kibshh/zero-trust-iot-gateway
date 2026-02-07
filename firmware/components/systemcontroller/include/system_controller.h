@@ -11,6 +11,7 @@
 #include "policy_manager.h"
 #include "policy_verifier.h"
 #include "backend_client.h"
+#include "time_sync.h"
 
 namespace zerotrust::system_controller {
 
@@ -59,6 +60,18 @@ public:
     // Perform authorization flow: request authorization, verify policy blob
     // Returns true if device transitioned to Authorized state
     bool try_authorize();
+
+    // Initialize time synchronization (call after network is connected)
+    // config: Optional custom config, uses defaults if nullptr
+    // wait_for_sync: If true, blocks until time is synchronized
+    // timeout_ms: Timeout for waiting (only used if wait_for_sync is true)
+    // Returns true if init succeeded (and sync succeeded if wait_for_sync)
+    bool init_time_sync(const time_sync::TimeSyncConfig* config = nullptr,
+                        bool wait_for_sync = true,
+                        uint32_t timeout_ms = 30000);
+
+    // Check if time is synchronized
+    bool is_time_synchronized() const;
 
 private:
     // Handle policy decision outcome
