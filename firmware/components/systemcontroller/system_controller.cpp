@@ -407,8 +407,8 @@ bool SystemController::try_authorize()
     // Get current time from NTP (0 if not synchronized - policy verifier will skip time checks)
     uint64_t current_time = time_sync::TimeSync::get_unix_time();
     
-    // Firmware version for anti-rollback (TODO: implement proper versioning)
-    uint64_t firmware_version = 0;
+    // Firmware version for anti-rollback (reads secure_version from app descriptor)
+    uint64_t firmware_version = attestation::AttestationEngine::get_firmware_version();
 
     if (!policy_verifier_.verify_and_validate(
             auth_resp.policy_blob, auth_resp.policy_blob_len,

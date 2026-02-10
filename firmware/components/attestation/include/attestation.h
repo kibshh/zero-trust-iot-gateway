@@ -61,6 +61,11 @@ public:
     // Invalidate cached firmware hash (call after OTA before reboot)
     static void invalidate_firmware_hash_cache();
 
+    // Get monotonic firmware version (anti-rollback counter)
+    // Reads secure_version from ESP-IDF app description
+    // Returns the version number (0 if unavailable)
+    static uint64_t get_firmware_version();
+
 private:
     identity::IdentityManager& identity_; // Reference because identity is system-owned
 };

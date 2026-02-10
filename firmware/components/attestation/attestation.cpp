@@ -1,5 +1,6 @@
 #include "attestation.h"
 
+#include "esp_app_desc.h"
 #include "esp_partition.h"
 #include "mbedtls/md.h"
 
@@ -194,6 +195,16 @@ void AttestationEngine::invalidate_firmware_hash_cache()
 {
     firmware_hash_valid = false;
     memset(firmware_hash_cache, 0, sizeof(firmware_hash_cache));
+}
+
+uint64_t AttestationEngine::get_firmware_version()
+{
+    const esp_app_desc_t* desc = esp_app_get_description();
+    if (!desc) {
+        return 0;
+    }
+
+    return static_cast<uint64_t>(desc->secure_version);
 }
 
 } // namespace zerotrust::attestation

@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "attestation.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES identity esp_partition mbedtls
+    REQUIRES identity esp_partition mbedtls esp_app_format
 )
 
