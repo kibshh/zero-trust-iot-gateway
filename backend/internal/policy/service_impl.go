@@ -29,19 +29,21 @@ type DeviceSource interface {
 
 // PolicyService implements the Service interface
 type PolicyService struct {
-	builder *Builder
-	signer  *Signer
-	store   Store
-	devices DeviceSource
+	builder     *Builder
+	ztpvBuilder *ZTPVBuilder
+	signer      *Signer
+	store       Store
+	devices     DeviceSource
 }
 
 // NewPolicyService creates a new PolicyService with all dependencies
-func NewPolicyService(builder *Builder, signer *Signer, store Store, devices DeviceSource) *PolicyService {
+func NewPolicyService(builder *Builder, ztpvBuilder *ZTPVBuilder, signer *Signer, store Store, devices DeviceSource) *PolicyService {
 	return &PolicyService{
-		builder: builder,
-		signer:  signer,
-		store:   store,
-		devices: devices,
+		builder:     builder,
+		ztpvBuilder: ztpvBuilder,
+		signer:      signer,
+		store:       store,
+		devices:     devices,
 	}
 }
 
@@ -96,6 +98,35 @@ func (s *PolicyService) Issue(ctx context.Context, deviceID string) ([]byte, err
 	return signedPolicy.Pack(), nil
 }
 
+// IssueRuntime creates and signs a runtime policy (ZTPV format) for a device
+func (s *PolicyService) IssueRuntime(ctx context.Context, deviceID string) ([]byte, error) {
+	// Decode device ID from hex
+	deviceIDBytes, err := hex.DecodeString(deviceID)
+	if err != nil || len(deviceIDBytes) != ZTPVDeviceIDSize {
+		return nil, ErrDeviceIDInvalid
+	}
+
+	// Verify device exists and is not revoked
+	devInfo, err := s.devices.GetDeviceInfo(ctx, deviceID)
+	if err != nil {
+		return nil, ErrDeviceNotFound
+	}
+	if devInfo.Revoked {
+		return nil, ErrDeviceRevoked
+	}
+
+	// Build ZTPV policy with default rules
+	// TODO: Load rules from config/store per device in the future
+	ztpvPolicy := &ZTPVPolicy{
+		PolicyVersion: 1, // TODO: Auto-increment from store
+		ExpiresAt:     0, // No expiry for default policy
+		Rules:         DefaultRuntimeRules(),
+	}
+
+	// Build and sign the complete ZTPV blob
+	return s.ztpvBuilder.BuildSigned(ztpvPolicy, deviceIDBytes, s.signer)
+}
+
 // Revoke marks the policy for a device as revoked
 func (s *PolicyService) Revoke(ctx context.Context, deviceID string) error {
 	// Load the policy first
@@ -115,4 +146,3 @@ func (s *PolicyService) Revoke(ctx context.Context, deviceID string) error {
 	// Save back
 	return s.store.Save(policy)
 }
-

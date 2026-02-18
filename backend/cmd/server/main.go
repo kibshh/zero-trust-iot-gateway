@@ -64,12 +64,13 @@ func run(ctx context.Context) error {
 
 	// Initialize policy service
 	policyBuilder := policy.NewBuilder()
+	ztpvBuilder := policy.NewZTPVBuilder()
 	policySigner, err := policy.NewSignerFromKey(signingKey)
 	if err != nil {
 		return err
 	}
 	deviceSource := device.NewDeviceSourceAdapter(deviceStore)
-	policySvc := policy.NewPolicyService(policyBuilder, policySigner, policyStore, deviceSource)
+	policySvc := policy.NewPolicyService(policyBuilder, ztpvBuilder, policySigner, policyStore, deviceSource)
 
 	// TODO: Initialize audit sink
 	var auditSink audit.Sink = nil // TODO: implement audit sink
@@ -88,4 +89,3 @@ func run(ctx context.Context) error {
 	// Start server (blocks until context is cancelled)
 	return srv.Start(ctx)
 }
-

@@ -15,8 +15,8 @@ import (
 
 // Server represents the HTTP server for the zero-trust IoT gateway backend
 type Server struct {
-	httpServer     *http.Server
-	addr           string
+	httpServer *http.Server
+	addr       string
 
 	registry       attestation.PublicKeyRegistry
 	attestationSvc attestation.Service
@@ -72,7 +72,7 @@ func New(
 	server.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  cfg.ReadTimeout,	
+		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
@@ -158,23 +158,6 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(`{"error":"not implemented"}`))
 }
 
-// Policy issue handler
-func (s *Server) handlePolicyIssue(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement policy issue
-	// - Parse policy request (device ID, policy rules)
-	// - Call policySvc.Issue(ctx, deviceID) to create and sign policy
-	// - Return signed policy blob
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
 // Policy revocation handler
 func (s *Server) handlePolicyRevoke(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -208,4 +191,3 @@ func (s *Server) handleAuditIngest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 	w.Write([]byte(`{"error":"not implemented"}`))
 }
-
