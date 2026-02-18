@@ -61,6 +61,11 @@ public:
     // Returns true if device transitioned to Authorized state
     bool try_authorize();
 
+    // Request and load runtime policy from backend
+    // Called after try_authorize() succeeds (device is in Authorized state)
+    // Returns true if device transitioned to Operational state
+    bool try_load_runtime_policy();
+
     // Initialize time synchronization (call after network is connected)
     // config: Optional custom config, uses defaults if nullptr
     // wait_for_sync: If true, blocks until time is synchronized

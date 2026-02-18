@@ -430,6 +430,59 @@ bool SystemController::try_authorize()
     return fsm_.get_state() == system_state::SystemState::Authorized;
 }
 
+bool SystemController::try_load_runtime_policy()
+{
+    // Must be in Authorized state (authorization completed, no runtime policy yet)
+    if (fsm_.get_state() != system_state::SystemState::Authorized) {
+        return false;
+    }
+
+    // Step 1: Get device ID
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 2: Request runtime policy from backend
+    backend::RuntimePolicyResponse policy_resp{};
+    backend::BackendStatus status = backend_client_.request_runtime_policy(
+        device_id, sizeof(device_id),
+        policy_resp);
+
+    if (status != backend::BackendStatus::Ok) {
+        switch (status) {
+            case backend::BackendStatus::Timeout:
+            case backend::BackendStatus::NetworkError:
+            case backend::BackendStatus::Denied:
+            case backend::BackendStatus::ServerError:
+                // Transient or policy not yet available - stay in Authorized, retry later
+                return false;
+
+            case backend::BackendStatus::InvalidResponse:
+            default:
+                // Protocol violation - lock device
+                process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+                return false;
+        }
+    }
+
+    // Step 3: Validate we got a non-empty blob
+    if (policy_resp.policy_blob_len == 0) {
+        // Empty policy from backend - protocol error
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 4: Pass blob to on_policy_blob_received which handles:
+    //   Parse → Verify signature → Anti-rollback → Persist to NVS → Activate
+    //   On success fires PolicyLoaded → Operational
+    on_policy_blob_received(policy_resp.policy_blob, policy_resp.policy_blob_len);
+
+    // Step 5: Check if we reached Operational
+    return fsm_.get_state() == system_state::SystemState::Operational;
+}
+
 bool SystemController::init_time_sync(const time_sync::TimeSyncConfig* config,
                                       bool wait_for_sync,
                                       uint32_t timeout_ms)

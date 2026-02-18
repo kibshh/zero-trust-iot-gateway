@@ -480,5 +480,110 @@ BackendStatus BackendClient::request_authorization(
     return BackendStatus::Ok;
 }
 
+BackendStatus BackendClient::request_runtime_policy(
+    const uint8_t* device_id,
+    size_t device_id_len,
+    RuntimePolicyResponse& out_response)
+{
+    // Initialize output
+    out_response.policy_blob_len = 0;
+
+    if (!initialized_) {
+        return BackendStatus::NotInitialized;
+    }
+
+    if (!device_id || device_id_len != BackendClient::DeviceIdSize) {
+        return BackendStatus::InvalidArgument;
+    }
+
+    char url[BackendClient::UrlBufferSize];
+    snprintf(url, BackendClient::UrlBufferSize, "%s%s",
+             config_.base_url, BackendClient::EndpointPolicyIssue);
+
+    char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
+    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+
+    char json_body[BackendClient::PolicyIssueJsonBodyBufferSize];
+    snprintf(json_body, BackendClient::PolicyIssueJsonBodyBufferSize,
+             "{\"device_id\":\"%s\"}", device_id_hex);
+
+    char response_buf[BackendClient::ResponseBufferSize];
+    HttpBuffer http_buf = { response_buf, 0, BackendClient::ResponseBufferSize - 1 };
+
+    esp_http_client_config_t http_config = {};
+    http_config.url = url;
+    http_config.method = HTTP_METHOD_POST;
+    http_config.timeout_ms = static_cast<int>(config_.timeout_ms);
+    http_config.event_handler = http_event_handler;
+    http_config.user_data = &http_buf;
+
+    esp_http_client_handle_t client = esp_http_client_init(&http_config);
+    if (!client) {
+        return BackendStatus::NetworkError;
+    }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_body, strlen(json_body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+            return BackendStatus::InvalidResponse;
+        }
+        if (err == ESP_ERR_HTTP_TIMEOUT) {
+            return BackendStatus::Timeout;
+        }
+        return BackendStatus::NetworkError;
+    }
+
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status_code != static_cast<int>(HttpStatusCode::Ok)) {
+        switch (status_code) {
+            case static_cast<int>(HttpStatusCode::Unauthorized):
+            case static_cast<int>(HttpStatusCode::Forbidden):
+            case static_cast<int>(HttpStatusCode::NotFound):
+                return BackendStatus::Denied;
+            case static_cast<int>(HttpStatusCode::BadRequest):
+                return BackendStatus::InvalidResponse;
+            case static_cast<int>(HttpStatusCode::InternalServerError):
+                return BackendStatus::ServerError;
+            default:
+                return BackendStatus::InvalidResponse;
+        }
+    }
+
+    cJSON* root = cJSON_Parse(response_buf);
+    if (!root) {
+        return BackendStatus::InvalidResponse;
+    }
+
+    // Parse "policy" field (required)
+    cJSON* policy_item = cJSON_GetObjectItem(root, BackendClient::JsonKeyPolicy);
+    if (!policy_item || !cJSON_IsString(policy_item)) {
+        cJSON_Delete(root);
+        return BackendStatus::InvalidResponse;
+    }
+
+    const char* policy_hex = policy_item->valuestring;
+    size_t hex_len = strlen(policy_hex);
+
+    if (hex_len == 0 || (hex_len % 2) != 0 ||
+        (hex_len / 2) > BackendClient::RuntimePolicyBlobMaxSize ||
+        !hex_to_bytes(policy_hex, hex_len,
+                      out_response.policy_blob,
+                      BackendClient::RuntimePolicyBlobMaxSize)) {
+        cJSON_Delete(root);
+        return BackendStatus::InvalidResponse;
+    }
+
+    out_response.policy_blob_len = hex_len / 2;
+
+    cJSON_Delete(root);
+    return BackendStatus::Ok;
+}
+
 } // namespace zerotrust::backend
 

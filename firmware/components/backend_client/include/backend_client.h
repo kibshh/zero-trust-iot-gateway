@@ -50,6 +50,12 @@ struct AuthorizationResponse {
     size_t policy_blob_len;     // Actual length of policy blob (0 if not authorized)
 };
 
+// Runtime policy response from backend
+struct RuntimePolicyResponse {
+    uint8_t policy_blob[2048];  // Packed signed ZTPV runtime policy blob
+    size_t policy_blob_len;     // Actual length of policy blob (0 if not received)
+};
+
 class BackendClient {
 public:
     static constexpr size_t DeviceIdSize = 16;
@@ -62,13 +68,16 @@ public:
     static constexpr size_t AttestationVerifyJsonBodyBufferSize = 512; // {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
     static constexpr size_t AuthorizationRequestJsonBodyBufferSize = 128; // {"device_id":"<hex>","firmware_hash":"<hex>"}
     static constexpr size_t RegisterDeviceJsonBodyBufferSize = 640; // {"device_id":"<hex>","public_key":"<hex>"}
-    static constexpr size_t ResponseBufferSize = 2560;  // Increased for policy blob
-    static constexpr size_t PolicyBlobMaxSize = 1024;   // Max size of packed policy blob
+    static constexpr size_t PolicyIssueJsonBodyBufferSize = 64; // {"device_id":"<hex>"}
+    static constexpr size_t ResponseBufferSize = 2560;
+    static constexpr size_t PolicyBlobMaxSize = 1024;   // Max size of packed auth policy blob
+    static constexpr size_t RuntimePolicyBlobMaxSize = 2048; // Max size of packed runtime policy blob
     static constexpr uint32_t DefaultTimeoutMs = 10000;
     static constexpr const char* EndpointAttestationChallenge = "/api/v1/attestation/challenge";
     static constexpr const char* EndpointAttestationVerify = "/api/v1/attestation/verify";
     static constexpr const char* EndpointDeviceRegister = "/api/v1/devices/register";
     static constexpr const char* EndpointAuthorizationRequest = "/api/v1/authorization/request";
+    static constexpr const char* EndpointPolicyIssue = "/api/v1/policy/issue";
     static constexpr const char* JsonKeyNonce = "nonce";
     static constexpr const char* JsonKeyGranted = "granted";
     static constexpr const char* JsonKeyAuthorized = "authorized";
@@ -118,6 +127,16 @@ public:
         const uint8_t* firmware_hash,
         size_t firmware_hash_len,
         AuthorizationResponse& out_response);
+
+    // Request runtime policy from backend
+    // device_id: 16-byte device identifier
+    // device_id_len: length of device identifier in bytes
+    // out_response: populated with signed ZTPV runtime policy blob on success
+    // Returns Ok on success, error status otherwise
+    BackendStatus request_runtime_policy(
+        const uint8_t* device_id,
+        size_t device_id_len,
+        RuntimePolicyResponse& out_response);
 
 private:
     bool initialized_;
