@@ -1,6 +1,5 @@
 #include "identity.h"
 
-#include "nvs_flash.h"
 #include "nvs.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/ecp.h"
@@ -27,27 +26,8 @@ void IdentityManager::init()
     key_status_ = KeyStatus::NotPresent;
     key_algorithm_ = KeyAlgorithm::None;
 
-    esp_err_t error = nvs_flash_init();
-    if (error == ESP_ERR_NVS_NO_FREE_PAGES || 
-        error == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // NVS partition is full or NVS needs to be updated to new version
-        // Both errors are normal and expected in NVS lifecycle
-        error = nvs_flash_erase();
-        if (error != ESP_OK) {
-            // Flash write doesn't work, faulty hardware
-            identity_status_ = IdentityStatus::Corrupted;
-            return;
-        }
-        // Retry initialization
-        error = nvs_flash_init();
-    }
-    if (error != ESP_OK) {
-        // NVS itself is broken, identity cannot be trusted
-        identity_status_ = IdentityStatus::Corrupted;
-        return;
-    }
-
-    // NVS is now initialized successfully
+    // NVS flash must be initialized by the caller (app_main) before calling init()
+    // IdentityManager only opens its own namespace
     nvs_handle_t handle;
     // Open identity namespace in read-only mode to probe for existing data
     error = nvs_open(IdentityManager::NvsNamespace, NVS_READONLY, &handle);
