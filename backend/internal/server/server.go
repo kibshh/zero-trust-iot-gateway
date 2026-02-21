@@ -21,6 +21,7 @@ type Server struct {
 	registry       attestation.PublicKeyRegistry
 	attestationSvc attestation.Service
 	authorizer     *device.Authorizer
+	deviceStore    device.Store
 	deviceSvc      device.Service
 	policySvc      policy.Service
 	auditSink      audit.Sink
@@ -51,6 +52,7 @@ func New(
 	cfg Config,
 	attestationSvc attestation.Service,
 	authorizer *device.Authorizer,
+	deviceStore device.Store,
 	deviceSvc device.Service,
 	policySvc policy.Service,
 	auditSink audit.Sink,
@@ -62,6 +64,7 @@ func New(
 		addr:           addr,
 		attestationSvc: attestationSvc,
 		authorizer:     authorizer,
+		deviceStore:    deviceStore,
 		deviceSvc:      deviceSvc,
 		policySvc:      policySvc,
 		auditSink:      auditSink,
@@ -169,23 +172,6 @@ func (s *Server) handlePolicyRevoke(w http.ResponseWriter, r *http.Request) {
 	// - Parse revocation request (device ID)
 	// - Mark device as revoked
 	// - Invalidate active policies
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
-
-// Audit ingestion handler
-func (s *Server) handleAuditIngest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement audit ingestion
-	// - Parse audit records from device
-	// - Store audit records
-	// - Return acknowledgment
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)

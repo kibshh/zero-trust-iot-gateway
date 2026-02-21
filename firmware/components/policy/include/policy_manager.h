@@ -25,6 +25,8 @@ public:
     static constexpr size_t MaxPolicyBlobSize = 2048;
     static constexpr size_t MinPolicyBlobSize = 64;
     static constexpr size_t MaxBackendPubKeySize = 256;
+    // Maximum audit records collectible from both engines
+    static constexpr size_t MaxAuditCollectSize = PolicyEngine::AuditBufferSize * 2;
 
     PolicyManager(identity::IdentityManager& identity, PolicyEngine& baseline_engine);
     ~PolicyManager() = default;
@@ -33,6 +35,19 @@ public:
     uint32_t get_policy_version() const { return policy_version_; }
     bool has_backend_public_key() const;
     bool is_policy_expired() const;
+
+    // Get remaining seconds until policy expiration
+    // Returns -1 if no policy active, no expiration set, or system time unavailable
+    // Returns 0 if already expired
+    int64_t get_policy_seconds_remaining() const;
+
+    // Collect audit records from both policy and baseline engines
+    // Copies up to max_records into out_records
+    // Returns number of records written
+    size_t collect_audit(PolicyAuditRecord* out_records, size_t max_records) const;
+
+    // Clear audit records from both engines (call after successful flush)
+    void clear_all_audit();
 
     // Get backend public key (DER-encoded ECDSA P-256)
     // Returns actual key length, or 0 if not available

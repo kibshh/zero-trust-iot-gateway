@@ -585,5 +585,109 @@ BackendStatus BackendClient::request_runtime_policy(
     return BackendStatus::Ok;
 }
 
+BackendStatus BackendClient::send_audit_records(
+    const uint8_t* device_id,
+    size_t device_id_len,
+    const policy::PolicyAuditRecord* records,
+    size_t record_count)
+{
+    if (!initialized_) {
+        return BackendStatus::NotInitialized;
+    }
+
+    if (!device_id || device_id_len != BackendClient::DeviceIdSize ||
+        !records || record_count == 0 ||
+        record_count > BackendClient::MaxAuditRecordsPerFlush) {
+        return BackendStatus::InvalidArgument;
+    }
+
+    char url[BackendClient::UrlBufferSize];
+    snprintf(url, BackendClient::UrlBufferSize, "%s%s",
+             config_.base_url, BackendClient::EndpointAuditIngest);
+
+    char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
+    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+
+    cJSON* root = cJSON_CreateObject();
+    if (!root) {
+        return BackendStatus::NetworkError;
+    }
+
+    cJSON_AddStringToObject(root, BackendClient::JsonKeyDeviceId, device_id_hex);
+
+    cJSON* records_arr = cJSON_AddArrayToObject(root, BackendClient::JsonKeyRecords);
+    if (!records_arr) {
+        cJSON_Delete(root);
+        return BackendStatus::NetworkError;
+    }
+
+    for (size_t i = 0; i < record_count; ++i) {
+        cJSON* rec = cJSON_CreateObject();
+        if (!rec) {
+            cJSON_Delete(root);
+            return BackendStatus::NetworkError;
+        }
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyAction, static_cast<uint8_t>(records[i].action));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyDecision, static_cast<uint8_t>(records[i].decision));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyActor, static_cast<uint8_t>(records[i].actor));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyOrigin, static_cast<uint8_t>(records[i].origin));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyIntent, static_cast<uint8_t>(records[i].intent));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyState, static_cast<uint8_t>(records[i].state));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeySource, static_cast<uint8_t>(records[i].source));
+        cJSON_AddItemToArray(records_arr, rec);
+    }
+
+    char* json_body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    if (!json_body) {
+        return BackendStatus::NetworkError;
+    }
+
+    char response_buf[BackendClient::ResponseBufferSize];
+    HttpBuffer http_buf = { response_buf, 0, BackendClient::ResponseBufferSize - 1 };
+
+    esp_http_client_config_t http_config = {};
+    http_config.url = url;
+    http_config.method = HTTP_METHOD_POST;
+    http_config.timeout_ms = static_cast<int>(config_.timeout_ms);
+    http_config.event_handler = http_event_handler;
+    http_config.user_data = &http_buf;
+
+    esp_http_client_handle_t client = esp_http_client_init(&http_config);
+    if (!client) {
+        cJSON_free(json_body);
+        return BackendStatus::NetworkError;
+    }
+
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_body, strlen(json_body));
+
+    esp_err_t err = esp_http_client_perform(client);
+    cJSON_free(json_body);
+
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        if (err == ESP_ERR_HTTP_TIMEOUT) {
+            return BackendStatus::Timeout;
+        }
+        return BackendStatus::NetworkError;
+    }
+
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status_code == static_cast<int>(HttpStatusCode::Ok)) {
+        return BackendStatus::Ok;
+    }
+
+    switch (status_code) {
+        case static_cast<int>(HttpStatusCode::InternalServerError):
+            return BackendStatus::ServerError;
+        default:
+            return BackendStatus::InvalidResponse;
+    }
+}
+
 } // namespace zerotrust::backend
 

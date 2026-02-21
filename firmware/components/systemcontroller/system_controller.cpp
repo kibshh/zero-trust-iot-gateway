@@ -286,7 +286,7 @@ bool SystemController::try_attest()
         return false;
     }
 
-    // Step 1: Get device ID for challenge request
+    // Step 1: Get device ID
     uint8_t device_id[identity::IdentityManager::DeviceIdSize];
     if (!identity_.get_device_id(device_id, sizeof(device_id))) {
         process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
@@ -299,15 +299,11 @@ bool SystemController::try_attest()
         device_id, sizeof(device_id), challenge_resp);
 
     if (status != backend::BackendStatus::Ok) {
-        // Handle challenge request failure
         switch (status) {
             case backend::BackendStatus::Timeout:
             case backend::BackendStatus::NetworkError:
                 // Transient error - retry allowed
                 return false;
-            case backend::BackendStatus::Denied:
-            case backend::BackendStatus::InvalidResponse:
-            case backend::BackendStatus::ServerError:
             default:
                 // Protocol / backend violation - lock device
                 process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
@@ -315,21 +311,20 @@ bool SystemController::try_attest()
         }
     }
 
-    // Step 3: Generate attestation response using the nonce
+    // Step 3: Generate attestation response
+    // Delegates to on_attestation_challenge (handles FSM transitions on critical failures)
     attestation::AttestationResponse attest_resp{};
     if (!on_attestation_challenge(challenge_resp.nonce, backend::BackendClient::NonceSize, attest_resp)) {
-        // on_attestation_challenge handles FSM transitions on critical failures
-        // Return false to indicate attestation did not complete
         return false;
     }
 
     // Step 4: Send attestation response to backend for verification
     status = backend_client_.verify_attestation(attest_resp);
 
-    // Step 5: Process verification result (handles FSM transitions)
+    // Step 5: Process verification result
+    // Denied = retry allowed (boot-time, firmware update may be in progress)
     on_attestation_verify_result(status);
 
-    // Return true only if we transitioned to Attested
     return fsm_.get_state() == system_state::SystemState::Attested;
 }
 
@@ -428,6 +423,169 @@ bool SystemController::try_authorize()
 
     // Return true only if we transitioned to Authorized
     return fsm_.get_state() == system_state::SystemState::Authorized;
+}
+
+bool SystemController::try_re_attest_periodic()
+{
+    system_state::SystemState state = fsm_.get_state();
+    if (state != system_state::SystemState::Operational &&
+        state != system_state::SystemState::Degraded) {
+        return false;
+    }
+
+    // Step 1: Get device ID
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        return false;
+    }
+
+    // Step 2: Request attestation challenge from backend
+    backend::ChallengeResponse challenge_resp{};
+    backend::BackendStatus status = backend_client_.request_attestation_challenge(
+        device_id, sizeof(device_id), challenge_resp);
+
+    if (status != backend::BackendStatus::Ok) {
+        switch (status) {
+            case backend::BackendStatus::Timeout:
+            case backend::BackendStatus::NetworkError:
+                // Transient error - retry allowed
+                return false;
+            default:
+                // Protocol / backend violation - lock device
+                process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+                return false;
+        }
+    }
+
+    // Step 3: Generate attestation response
+    // Calls generate_response() directly (on_attestation_challenge restricts to IdentityReady/Attested)
+    attestation::AttestationChallenge challenge{
+        .nonce = challenge_resp.nonce,
+        .nonce_len = backend::BackendClient::NonceSize
+    };
+
+    attestation::AttestationResponse attest_resp{};
+    auto attest_status = attestation_.generate_response(challenge, attest_resp);
+
+    if (attest_status != attestation::AttestationStatus::Ok) {
+        if (attest_status == attestation::AttestationStatus::IdentityMissing ||
+            attest_status == attestation::AttestationStatus::KeyMissing) {
+            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+        }
+        return false;
+    }
+
+    // Step 4: Send attestation response to backend for verification
+    status = backend_client_.verify_attestation(attest_resp);
+
+    // Step 5: Process verification result
+    // Denied = lock (runtime, firmware already running — denial means compromise)
+    switch (status) {
+        case backend::BackendStatus::Ok:
+            return true;
+        case backend::BackendStatus::Denied:
+            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+            return false;
+        case backend::BackendStatus::Timeout:
+        case backend::BackendStatus::NetworkError:
+            // Transient error - retry allowed
+            return false;
+        default:
+            // Protocol / backend violation - lock device
+            process_event_or_lock(fsm_, system_state::SystemEvent::ManualLock);
+            return false;
+    }
+}
+
+bool SystemController::try_refresh_policy()
+{
+    system_state::SystemState state = fsm_.get_state();
+    if (state != system_state::SystemState::Operational &&
+        state != system_state::SystemState::Degraded) {
+        return false;
+    }
+
+    if (!policy_mgr_.is_policy_active()) {
+        return false;
+    }
+
+    // Only refresh if policy is nearing expiration
+    int64_t remaining = policy_mgr_.get_policy_seconds_remaining();
+    if (remaining < 0) {
+        // No expiration set or time unavailable — nothing to refresh
+        return false;
+    }
+    if (remaining > policy::PolicyManager::PolicyRefreshThresholdSec) {
+        return false;
+    }
+
+    // Step 1: Get device ID
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        return false;
+    }
+
+    // Step 2: Request new runtime policy from backend
+    backend::RuntimePolicyResponse policy_resp{};
+    backend::BackendStatus status = backend_client_.request_runtime_policy(
+        device_id, sizeof(device_id), policy_resp);
+
+    if (status != backend::BackendStatus::Ok || policy_resp.policy_blob_len == 0) {
+        // Transient failure — old policy still valid
+        return false;
+    }
+
+    // Step 3: Load new policy through PolicyManager directly
+    // (on_policy_blob_received restricts to Authorized state, we're Operational/Degraded)
+    policy::PolicyBlob blob{policy_resp.policy_blob, policy_resp.policy_blob_len};
+    policy::PolicyLoadResult result = policy_mgr_.load_policy(blob);
+
+    switch (result) {
+        case policy::PolicyLoadResult::Ok:
+            return true;
+        case policy::PolicyLoadResult::SecurityViolation:
+            process_event_or_lock(fsm_, system_state::SystemEvent::PolicyViolation);
+            return false;
+        case policy::PolicyLoadResult::TransientError:
+        default:
+            return false;
+    }
+}
+
+bool SystemController::try_flush_audit()
+{
+    system_state::SystemState state = fsm_.get_state();
+    if (state != system_state::SystemState::Operational &&
+        state != system_state::SystemState::Degraded) {
+        return false;
+    }
+
+    // Collect records from both engines
+    policy::PolicyAuditRecord records[policy::PolicyManager::MaxAuditCollectSize];
+    size_t count = policy_mgr_.collect_audit(records,
+                                             policy::PolicyManager::MaxAuditCollectSize);
+
+    if (count == 0) {
+        return true;
+    }
+
+    // Get device ID
+    uint8_t device_id[identity::IdentityManager::DeviceIdSize];
+    if (!identity_.get_device_id(device_id, sizeof(device_id))) {
+        return false;
+    }
+
+    backend::BackendStatus status = backend_client_.send_audit_records(
+        device_id, sizeof(device_id), records, count);
+
+    if (status == backend::BackendStatus::Ok) {
+        // Only clear after successful send to avoid losing records
+        policy_mgr_.clear_all_audit();
+        return true;
+    }
+
+    return false;
 }
 
 bool SystemController::try_load_runtime_policy()

@@ -30,6 +30,20 @@ struct RetryConfig {
 // Main loop tick interval (milliseconds)
 constexpr uint32_t MainLoopIntervalMs = 1000;
 
+// Operational main loop intervals (in ticks, each tick = MainLoopIntervalMs)
+struct OperationalIntervals {
+    static constexpr uint32_t ReAttestTicks = 3600;      // Re-attest every 1 hour
+    static constexpr uint32_t PolicyRefreshTicks = 300;  // Check policy refresh every 5 minutes
+    static constexpr uint32_t AuditFlushTicks = 300;     // Flush audit records every 5 minutes
+};
+
+// Elapsed-since-last-run check that handles uint32_t wrap-around correctly
+// Works because unsigned subtraction wraps: if tick=5 and last=0xFFFFFFF0, (5 - 0xFFFFFFF0) = 21
+bool is_interval_elapsed(uint32_t tick, uint32_t last_tick, uint32_t interval)
+{
+    return (tick - last_tick) >= interval;
+}
+
 // Backend configuration
 // TODO: Load from NVS or Kconfig in production
 constexpr zerotrust::backend::BackendConfig DefaultBackendConfig = {
@@ -218,7 +232,7 @@ extern "C" void app_main(void)
     } while (false);
 
     // Main loop
-    // TODO: Replace single-loop with FreeRTOS tasks in Phase 2:
+    // TODO: Replace single-loop with FreeRTOS tasks in Phase 3:
     //   - Main/Controller task (medium priority): orchestrates state, periodic tick
     //   - Sensor task (high priority): fixed-interval reads via queue
     //   - Network task (medium priority): telemetry, backend commands (MQTT/HTTP)
@@ -227,8 +241,36 @@ extern "C" void app_main(void)
     if (boot_ok) {
         printf("[BOOT] Boot sequence complete — device is Operational\n");
 
+        uint32_t tick = 0;
+        uint32_t last_audit_tick = 0;
+        uint32_t last_refresh_tick = 0;
+        uint32_t last_attest_tick = 0;
+
         while (!is_terminal_state(fsm.get_state())) {
+            // Per-tick: policy expiration check
             controller.on_periodic_tick();
+
+            // Flush audit records before policy refresh (avoids losing records on policy reload)
+            // TODO: Use retvals (try_flush_audit, try_refresh_policy, try_re_attest_periodic)
+            // for backoff, logging, or Degraded transition
+            if (is_interval_elapsed(tick, last_audit_tick, OperationalIntervals::AuditFlushTicks)) {
+                controller.try_flush_audit();
+                last_audit_tick = tick;
+            }
+
+            // Policy refresh (only requests new policy when nearing expiration)
+            if (is_interval_elapsed(tick, last_refresh_tick, OperationalIntervals::PolicyRefreshTicks)) {
+                controller.try_refresh_policy();
+                last_refresh_tick = tick;
+            }
+
+            // Periodic re-attestation
+            if (is_interval_elapsed(tick, last_attest_tick, OperationalIntervals::ReAttestTicks)) {
+                controller.try_re_attest_periodic();
+                last_attest_tick = tick;
+            }
+
+            ++tick;
             vTaskDelay(pdMS_TO_TICKS(MainLoopIntervalMs));
         }
 

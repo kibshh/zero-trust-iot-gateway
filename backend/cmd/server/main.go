@@ -55,7 +55,7 @@ func run(ctx context.Context) error {
 	var attestationSvc attestation.Service = nil // TODO: implement attestation service
 
 	// Initialize policy signing key (dev mode: generate ephemeral key)
-	// TODO: Load from secure storage in production
+	// TODO: Load from secure storage
 	signingKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
@@ -72,8 +72,9 @@ func run(ctx context.Context) error {
 	deviceSource := device.NewDeviceSourceAdapter(deviceStore)
 	policySvc := policy.NewPolicyService(policyBuilder, ztpvBuilder, policySigner, policyStore, deviceSource)
 
-	// TODO: Initialize audit sink
-	var auditSink audit.Sink = nil // TODO: implement audit sink
+	// Initialize audit sink (dev mode: in-memory)
+	// TODO: Replace with persistent storage
+	auditSink := audit.NewMemorySink()
 
 	// Initialize HTTP server with default configuration
 	cfg := server.DefaultConfig()
@@ -81,6 +82,7 @@ func run(ctx context.Context) error {
 		cfg,
 		attestationSvc,
 		authorizer,
+		deviceStore,
 		deviceSvc,
 		policySvc,
 		auditSink,

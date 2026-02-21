@@ -19,6 +19,9 @@ namespace zerotrust::system_controller {
 // Owns no resources, only coordinates subsystems, thats why it uses references
 class SystemController {
 public:
+    // Refresh policy when fewer than this many seconds remain before expiration
+    static constexpr int64_t PolicyRefreshThresholdSec = 600;
+
     SystemController(system_state::SystemStateMachine& fsm,
                      identity::IdentityManager& identity,
                      attestation::AttestationEngine& attestation,
@@ -65,6 +68,23 @@ public:
     // Called after try_authorize() succeeds (device is in Authorized state)
     // Returns true if device transitioned to Operational state
     bool try_load_runtime_policy();
+
+    // Periodic re-attestation (Operational/Degraded only)
+    // Proves to backend that device is still running approved firmware
+    // Does NOT change state on success. Locks on backend denial (firmware compromise)
+    // Returns true if backend accepted attestation
+    bool try_re_attest_periodic();
+
+    // Refresh runtime policy before expiration (Operational/Degraded only)
+    // Requests new policy from backend when current policy nears expiration
+    // On success: new policy replaces old one (stays in current state)
+    // On failure: old policy remains valid, retry later
+    bool try_refresh_policy();
+
+    // Flush audit records to backend (Operational/Degraded only)
+    // Collects records from both policy engines, sends to backend, clears on success
+    // Returns true if records were sent successfully (or nothing to send)
+    bool try_flush_audit();
 
     // Initialize time synchronization (call after network is connected)
     // config: Optional custom config, uses defaults if nullptr

@@ -663,6 +663,54 @@ bool PolicyManager::is_policy_expired() const
     return check_expiration(parsed_policy_.expires_at);
 }
 
+int64_t PolicyManager::get_policy_seconds_remaining() const
+{
+    if (!policy_active_ || parsed_policy_.expires_at == 0) {
+        return -1;
+    }
+
+    time_t now = time(nullptr);
+    if (now <= 0 || now < static_cast<time_t>(ParsedPolicy::MinValidTimestamp)) {
+        return -1;
+    }
+
+    int64_t remaining = static_cast<int64_t>(parsed_policy_.expires_at) - static_cast<int64_t>(now);
+    return remaining > 0 ? remaining : 0;
+}
+
+size_t PolicyManager::collect_audit(PolicyAuditRecord* out_records, size_t max_records) const
+{
+    if (!out_records || max_records == 0) {
+        return 0;
+    }
+
+    size_t total = 0;
+
+    size_t policy_count = policy_engine_.get_audit_count();
+    for (size_t i = 0; i < policy_count && total < max_records; ++i) {
+        const PolicyAuditRecord* record = policy_engine_.get_audit_record(i);
+        if (record) {
+            out_records[total++] = *record;
+        }
+    }
+
+    size_t baseline_count = baseline_engine_.get_audit_count();
+    for (size_t i = 0; i < baseline_count && total < max_records; ++i) {
+        const PolicyAuditRecord* record = baseline_engine_.get_audit_record(i);
+        if (record) {
+            out_records[total++] = *record;
+        }
+    }
+
+    return total;
+}
+
+void PolicyManager::clear_all_audit()
+{
+    policy_engine_.clear_audit();
+    baseline_engine_.clear_audit();
+}
+
 bool PolicyManager::load_persisted_policy()
 {
     // Load policy from NVS into memory on startup

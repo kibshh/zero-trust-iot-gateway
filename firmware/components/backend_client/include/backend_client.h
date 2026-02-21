@@ -5,6 +5,7 @@
 #include <cstddef>
 
 #include "attestation.h"
+#include "policy_types.h"
 
 namespace zerotrust::backend {
 
@@ -78,10 +79,21 @@ public:
     static constexpr const char* EndpointDeviceRegister = "/api/v1/devices/register";
     static constexpr const char* EndpointAuthorizationRequest = "/api/v1/authorization/request";
     static constexpr const char* EndpointPolicyIssue = "/api/v1/policy/issue";
+    static constexpr const char* EndpointAuditIngest = "/api/v1/audit/ingest";
     static constexpr const char* JsonKeyNonce = "nonce";
     static constexpr const char* JsonKeyGranted = "granted";
     static constexpr const char* JsonKeyAuthorized = "authorized";
     static constexpr const char* JsonKeyPolicy = "policy";
+    static constexpr const char* JsonKeyDeviceId = "device_id";
+    static constexpr const char* JsonKeyRecords = "records";
+    static constexpr const char* JsonKeyAction = "action";
+    static constexpr const char* JsonKeyDecision = "decision";
+    static constexpr const char* JsonKeyActor = "actor";
+    static constexpr const char* JsonKeyOrigin = "origin";
+    static constexpr const char* JsonKeyIntent = "intent";
+    static constexpr const char* JsonKeyState = "state";
+    static constexpr const char* JsonKeySource = "source";
+    static constexpr size_t MaxAuditRecordsPerFlush = 64;
 
     explicit BackendClient() : initialized_(false), config_{ nullptr, 0 } {}
     ~BackendClient() = default;
@@ -137,6 +149,18 @@ public:
         const uint8_t* device_id,
         size_t device_id_len,
         RuntimePolicyResponse& out_response);
+
+    // Send audit records to backend for storage
+    // device_id: 16-byte device identifier
+    // device_id_len: length of device identifier in bytes
+    // records: array of audit records to send
+    // record_count: number of records in array
+    // Returns Ok on success, error status otherwise
+    BackendStatus send_audit_records(
+        const uint8_t* device_id,
+        size_t device_id_len,
+        const policy::PolicyAuditRecord* records,
+        size_t record_count);
 
 private:
     bool initialized_;
