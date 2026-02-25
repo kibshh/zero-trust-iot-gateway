@@ -1,6 +1,11 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"strconv"
@@ -21,6 +26,7 @@ const (
 	EnvTLSClientCAFile       = "ZTG_TLS_CLIENT_CA_FILE"
 	EnvTLSRequireClientCert  = "ZTG_TLS_REQUIRE_CLIENT_CERT"
 	EnvTLSMinVersion         = "ZTG_TLS_MIN_VERSION"
+	EnvDevEphemeralKey       = "ZTG_DEV_EPHEMERAL_KEY"
 
 	MinPortNumber = 1
 	MaxPortNumber = 65535
@@ -47,6 +53,7 @@ type Config struct {
 	ServerIdleTimeoutSec  int
 	SigningKeyPath        string
 	DatabaseDSN           string
+	DevEphemeralKey       bool
 	TLS                   TLSConfig
 }
 
@@ -60,6 +67,7 @@ func LoadFromEnv() (Config, error) {
 		ServerIdleTimeoutSec:  intEnvOrDefault(EnvServerIdleTimeoutSec, 60),
 		SigningKeyPath:        strings.TrimSpace(os.Getenv(EnvSigningKeyPath)),
 		DatabaseDSN:           strings.TrimSpace(os.Getenv(EnvDatabaseDSN)),
+		DevEphemeralKey:       boolEnvOrDefault(EnvDevEphemeralKey, false),
 		TLS: TLSConfig{
 			Enabled:           boolEnvOrDefault(EnvTLSEnabled, false),
 			CertFile:          strings.TrimSpace(os.Getenv(EnvTLSCertFile)),
@@ -94,8 +102,11 @@ func (c Config) Validate() error {
 	if c.ServerIdleTimeoutSec <= 0 {
 		return fmt.Errorf("invalid %s: must be > 0", EnvServerIdleTimeoutSec)
 	}
-	if c.SigningKeyPath == "" {
-		return fmt.Errorf("invalid %s: must not be empty", EnvSigningKeyPath)
+	if c.DevEphemeralKey && c.SigningKeyPath != "" {
+		return fmt.Errorf("invalid config: %s and %s are mutually exclusive", EnvDevEphemeralKey, EnvSigningKeyPath)
+	}
+	if !c.DevEphemeralKey && c.SigningKeyPath == "" {
+		return fmt.Errorf("invalid %s: must not be empty (or set %s=true for dev mode)", EnvSigningKeyPath, EnvDevEphemeralKey)
 	}
 	if c.DatabaseDSN == "" {
 		return fmt.Errorf("invalid %s: must not be empty", EnvDatabaseDSN)
@@ -115,6 +126,57 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// LoadSigningKey loads the ECDSA P-256 signing key from the path in cfg.
+// If cfg.DevEphemeralKey is true, it generates an ephemeral key instead and
+// logs a warning — this path must never be used in production.
+func LoadSigningKey(cfg Config) (*ecdsa.PrivateKey, error) {
+	if cfg.DevEphemeralKey {
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return nil, fmt.Errorf("ephemeral key generation failed: %w", err)
+		}
+		return key, nil
+	}
+
+	data, err := os.ReadFile(cfg.SigningKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading signing key %q: %w", cfg.SigningKeyPath, err)
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("signing key %q: no PEM block found", cfg.SigningKeyPath)
+	}
+
+	switch block.Type {
+	case "EC PRIVATE KEY":
+		key, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("signing key %q: %w", cfg.SigningKeyPath, err)
+		}
+		if key.Curve != elliptic.P256() {
+			return nil, fmt.Errorf("signing key %q: must be ECDSA P-256, got %s", cfg.SigningKeyPath, key.Curve.Params().Name)
+		}
+		return key, nil
+	case "PRIVATE KEY":
+		// PKCS#8 wrapped key
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("signing key %q: %w", cfg.SigningKeyPath, err)
+		}
+		key, ok := parsed.(*ecdsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("signing key %q: must be ECDSA P-256", cfg.SigningKeyPath)
+		}
+		if key.Curve != elliptic.P256() {
+			return nil, fmt.Errorf("signing key %q: must be ECDSA P-256, got %s", cfg.SigningKeyPath, key.Curve.Params().Name)
+		}
+		return key, nil
+	default:
+		return nil, fmt.Errorf("signing key %q: unsupported PEM type %q", cfg.SigningKeyPath, block.Type)
+	}
 }
 
 func envOrDefault(key, fallback string) string {
