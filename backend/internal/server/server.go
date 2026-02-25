@@ -161,19 +161,3 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(`{"error":"not implemented"}`))
 }
 
-// Policy revocation handler
-func (s *Server) handlePolicyRevoke(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// TODO: Implement policy revocation
-	// - Parse revocation request (device ID)
-	// - Mark device as revoked
-	// - Invalidate active policies
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}

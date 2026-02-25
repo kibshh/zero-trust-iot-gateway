@@ -33,7 +33,7 @@ func main() {
 
 	// Initialize and start backend services
 	if err := run(ctx); err != nil {
-		log.Fatalf("Backend error: %v", err)
+		log.Fatalf("Startup failed: %v", err)
 	}
 }
 
