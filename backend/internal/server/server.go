@@ -150,14 +150,4 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-// Device operations handler (GET, DELETE, etc.)
-func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement device operations
-	// - GET /api/v1/devices/{id} - Get device info
-	// - DELETE /api/v1/devices/{id} - Revoke device
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte(`{"error":"not implemented"}`))
-}
 
