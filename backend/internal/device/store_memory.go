@@ -32,3 +32,14 @@ func (s *memoryStore) Save(device *Device) error {
 	return nil
 }
 
+func (s *memoryStore) List() ([]*Device, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]*Device, 0, len(s.devices))
+	for _, dev := range s.devices {
+		result = append(result, dev)
+	}
+	return result, nil
+}
+

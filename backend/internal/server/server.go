@@ -18,7 +18,6 @@ type Server struct {
 	httpServer *http.Server
 	addr       string
 
-	registry       attestation.PublicKeyRegistry
 	attestationSvc attestation.Service
 	authorizer     *device.Authorizer
 	deviceStore    device.Store

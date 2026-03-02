@@ -62,11 +62,12 @@ func run(ctx context.Context) error {
 	// Initialize authorizer
 	authorizer := device.NewAuthorizer(deviceStore, policyStore)
 
-	// TODO: Initialize device management service
-	var deviceSvc device.Service = nil
+	// Initialize device service
+	deviceSvc := device.NewService(deviceStore)
 
-	// TODO: Initialize attestation service
-	var attestationSvc attestation.Service = nil
+	// Initialize attestation registry and service
+	registry := attestation.NewMemoryRegistry()
+	attestationSvc := attestation.NewMemoryService(registry)
 
 	// Initialize policy service
 	policyBuilder := policy.NewBuilder()

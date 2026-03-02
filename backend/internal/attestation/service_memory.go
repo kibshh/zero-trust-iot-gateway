@@ -37,6 +37,11 @@ func NewMemoryService(registry PublicKeyRegistry) *memoryService {
 	}
 }
 
+// Register stores the device's public key in the registry.
+func (s *memoryService) Register(_ context.Context, deviceID string, pubKeyDER []byte) error {
+	return s.registry.Register(deviceID, pubKeyDER)
+}
+
 // AddFirmwareHash adds a firmware hash to the whitelist
 func (s *memoryService) AddFirmwareHash(hash []byte) error {
 	if len(hash) != FirmwareHashSize {
