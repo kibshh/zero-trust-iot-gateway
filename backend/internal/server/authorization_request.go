@@ -87,5 +87,3 @@ func isAuthorizationDenial(err error) bool {
 		errors.Is(err, device.ErrFirmwareVersionRollback)
 }
 
-
-

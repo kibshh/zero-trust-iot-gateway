@@ -16,12 +16,18 @@ type challengeResponse struct {
 	Nonce string `json:"nonce"`
 }
 
-// Attestation challenge handler
-// Device ID should be provided in json body.
+// handleAttestationChallenge issues a nonce challenge for a registered device.
+// POST /api/v1/attestation/challenge
+// Request:  {"device_id":"<hex>"}
+// Response: {"nonce":"<hex>"}
 func (s *Server) handleAttestationChallenge(w http.ResponseWriter, r *http.Request) {
-	// Handles POST requests only.
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.attestationSvc == nil {
+		http.Error(w, "attestation service not configured", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -31,11 +37,14 @@ func (s *Server) handleAttestationChallenge(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Validate device_id format (hex, 16 bytes)
-	// Device ID will be used as a string but here it's validated if it's a valid hex string.
 	rawID, err := hex.DecodeString(req.DeviceID)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
+		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
 

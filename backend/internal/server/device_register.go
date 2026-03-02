@@ -47,16 +47,17 @@ func (s *Server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.registry.Register(req.DeviceID, pubKeyDER)
-	if err != nil {
+	if err := s.registry.Register(req.DeviceID, pubKeyDER); err != nil {
 		if errors.Is(err, attestation.ErrDeviceAlreadyExists) {
-			http.Error(w, "registration failed", http.StatusConflict)
+			http.Error(w, "device already registered", http.StatusConflict)
 			return
 		}
 		http.Error(w, "cannot register device", http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(`{"status":"registered"}`))
 }
 

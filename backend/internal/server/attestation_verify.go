@@ -18,12 +18,18 @@ type verifyResponse struct {
 	Granted bool `json:"granted"`
 }
 
-// Attestation verify handler
-// Device sends attestation response (device_id, firmware_hash, signature) in JSON body.
+// handleAttestationVerify verifies an attestation response from a registered device.
+// POST /api/v1/attestation/verify
+// Request:  {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
+// Response: {"granted":true|false}
 func (s *Server) handleAttestationVerify(w http.ResponseWriter, r *http.Request) {
-	// Handles POST requests only.
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.attestationSvc == nil {
+		http.Error(w, "attestation service not configured", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -33,24 +39,26 @@ func (s *Server) handleAttestationVerify(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate device_id format (hex, 16 bytes)
 	rawID, err := hex.DecodeString(req.DeviceID)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}
 
-	// Validate firmware_hash format (hex, 32 bytes)
 	firmwareHash, err := hex.DecodeString(req.FirmwareHash)
 	if err != nil || len(firmwareHash) != attestation.FirmwareHashSize {
 		http.Error(w, "invalid firmware_hash", http.StatusBadRequest)
 		return
 	}
 
-	// Validate signature format (hex, max 72 bytes)
 	signatureDER, err := hex.DecodeString(req.Signature)
 	if err != nil || len(signatureDER) == 0 || len(signatureDER) > attestation.MaxSignatureSize {
 		http.Error(w, "invalid signature", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
+		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
 
