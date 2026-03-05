@@ -49,7 +49,7 @@ func (s *Server) handleAuthorizationRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Check authorization
+	// Authorize: checks device status, active policy, firmware hash whitelist, and anti-rollback
 	err = s.authorizer.Authorize(req.DeviceID, firmwareHash)
 
 	// Distinguish policy denial from system error

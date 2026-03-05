@@ -36,18 +36,21 @@ func (s *Server) handleDeviceRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate device_id format (hex, 16 bytes)
 	rawID, err := hex.DecodeString(req.DeviceID)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}
 
+	// Validate public key is non-empty hex
 	pubKeyDER, err := hex.DecodeString(req.PublicKey)
 	if err != nil || len(pubKeyDER) == 0 {
 		http.Error(w, "invalid public_key", http.StatusBadRequest)
 		return
 	}
 
+	// Basic sanity check: parse public key
 	if _, err := x509.ParsePKIXPublicKey(pubKeyDER); err != nil {
 		http.Error(w, "invalid public_key format", http.StatusBadRequest)
 		return

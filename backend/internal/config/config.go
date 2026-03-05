@@ -27,11 +27,17 @@ const (
 	EnvTLSRequireClientCert  = "ZTG_TLS_REQUIRE_CLIENT_CERT"
 	EnvTLSMinVersion         = "ZTG_TLS_MIN_VERSION"
 	EnvDevEphemeralKey       = "ZTG_DEV_EPHEMERAL_KEY"
+	EnvPolicyTTLSec          = "ZTG_POLICY_TTL_SEC"
 
 	MinPortNumber = 1
 	MaxPortNumber = 65535
-	TLSVersion12  = "1.2"
-	TLSVersion13  = "1.3"
+
+	TLSVersion12 = "1.2"
+	TLSVersion13 = "1.3"
+
+	// DefaultPolicyTTLSec is a short TTL suitable for dev; production should set
+	// ZTG_POLICY_TTL_SEC to match the device re-attestation interval. - TODO
+	DefaultPolicyTTLSec = 3600
 )
 
 // TLSConfig holds TLS settings.
@@ -53,6 +59,7 @@ type Config struct {
 	ServerIdleTimeoutSec  int
 	SigningKeyPath        string
 	DatabaseDSN           string
+	PolicyTTLSec          int
 	DevEphemeralKey       bool
 	TLS                   TLSConfig
 }
@@ -67,6 +74,7 @@ func LoadFromEnv() (Config, error) {
 		ServerIdleTimeoutSec:  intEnvOrDefault(EnvServerIdleTimeoutSec, 60),
 		SigningKeyPath:        strings.TrimSpace(os.Getenv(EnvSigningKeyPath)),
 		DatabaseDSN:           strings.TrimSpace(os.Getenv(EnvDatabaseDSN)),
+		PolicyTTLSec:          intEnvOrDefault(EnvPolicyTTLSec, DefaultPolicyTTLSec),
 		DevEphemeralKey:       boolEnvOrDefault(EnvDevEphemeralKey, false),
 		TLS: TLSConfig{
 			Enabled:           boolEnvOrDefault(EnvTLSEnabled, false),
@@ -101,6 +109,9 @@ func (c Config) Validate() error {
 	}
 	if c.ServerIdleTimeoutSec <= 0 {
 		return fmt.Errorf("invalid %s: must be > 0", EnvServerIdleTimeoutSec)
+	}
+	if c.PolicyTTLSec <= 0 {
+		return fmt.Errorf("invalid %s: must be > 0", EnvPolicyTTLSec)
 	}
 	if c.DevEphemeralKey && c.SigningKeyPath != "" {
 		return fmt.Errorf("invalid config: %s and %s are mutually exclusive", EnvDevEphemeralKey, EnvSigningKeyPath)

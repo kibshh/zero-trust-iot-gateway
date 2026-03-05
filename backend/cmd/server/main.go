@@ -77,7 +77,10 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("policy signer error: %w", err)
 	}
 	deviceSource := device.NewDeviceSourceAdapter(deviceStore)
-	policySvc := policy.NewPolicyService(policyBuilder, ztpvBuilder, policySigner, policyStore, deviceSource)
+	versionStore := policy.NewMemoryVersionStore()
+	ruleSource := policy.NewDefaultRuleSource()
+	policyTTL := time.Duration(cfg.PolicyTTLSec) * time.Second
+	policySvc := policy.NewPolicyService(policyBuilder, ztpvBuilder, policySigner, policyStore, deviceSource, versionStore, ruleSource, policyTTL)
 
 	// Initialize audit sink (dev mode: in-memory)
 	// TODO: Replace with persistent storage

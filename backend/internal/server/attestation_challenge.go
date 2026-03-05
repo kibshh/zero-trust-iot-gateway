@@ -37,12 +37,14 @@ func (s *Server) handleAttestationChallenge(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Validate device_id format (hex, 16 bytes)
 	rawID, err := hex.DecodeString(req.DeviceID)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}
 
+	// Verify device is registered before issuing a challenge
 	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return

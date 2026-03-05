@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math"
 	"time"
 )
 
 var (
-	ErrDeviceIDInvalid = errors.New("invalid device ID")
-	ErrDeviceNotFound  = errors.New("device not found")
-	ErrDeviceRevoked   = errors.New("device is revoked")
-	ErrPolicyRevoked   = errors.New("policy is revoked")
-	ErrPolicyExpired   = errors.New("policy has expired")
+	ErrDeviceIDInvalid      = errors.New("invalid device ID")
+	ErrDeviceNotFound       = errors.New("device not found")
+	ErrDeviceRevoked        = errors.New("device is revoked")
+	ErrPolicyRevoked        = errors.New("policy is revoked")
+	ErrPolicyExpired        = errors.New("policy has expired")
+	ErrPolicyExpiryOverflow = errors.New("policy expiry timestamp exceeds uint32 range")
 )
 
 // DeviceInfo contains the minimal device information needed for policy operations
@@ -29,21 +31,36 @@ type DeviceSource interface {
 
 // PolicyService implements the Service interface
 type PolicyService struct {
-	builder     *Builder
-	ztpvBuilder *ZTPVBuilder
-	signer      *Signer
-	store       Store
-	devices     DeviceSource
+	builder      *Builder
+	ztpvBuilder  *ZTPVBuilder
+	signer       *Signer
+	store        Store
+	devices      DeviceSource
+	versionStore RuntimeVersionStore
+	ruleSource   RuleSource
+	policyTTL    time.Duration
 }
 
 // NewPolicyService creates a new PolicyService with all dependencies
-func NewPolicyService(builder *Builder, ztpvBuilder *ZTPVBuilder, signer *Signer, store Store, devices DeviceSource) *PolicyService {
+func NewPolicyService(
+	builder *Builder,
+	ztpvBuilder *ZTPVBuilder,
+	signer *Signer,
+	store Store,
+	devices DeviceSource,
+	versionStore RuntimeVersionStore,
+	ruleSource RuleSource,
+	policyTTL time.Duration,
+) *PolicyService {
 	return &PolicyService{
-		builder:     builder,
-		ztpvBuilder: ztpvBuilder,
-		signer:      signer,
-		store:       store,
-		devices:     devices,
+		builder:      builder,
+		ztpvBuilder:  ztpvBuilder,
+		signer:       signer,
+		store:        store,
+		devices:      devices,
+		versionStore: versionStore,
+		ruleSource:   ruleSource,
+		policyTTL:    policyTTL,
 	}
 }
 
@@ -115,12 +132,21 @@ func (s *PolicyService) IssueRuntime(ctx context.Context, deviceID string) ([]by
 		return nil, ErrDeviceRevoked
 	}
 
-	// Build ZTPV policy with default rules
-	// TODO: Load rules from config/store per device in the future
+	// Load rules for this device from the configured rule source
+	rules, err := s.ruleSource.RulesFor(deviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Monotonic version prevents rollback to an older policy on the device
+	expiresUnix := time.Now().Add(s.policyTTL).Unix()
+	if expiresUnix < 0 || expiresUnix > math.MaxUint32 {
+		return nil, ErrPolicyExpiryOverflow
+	}
 	ztpvPolicy := &ZTPVPolicy{
-		PolicyVersion: 1, // TODO: Auto-increment from store
-		ExpiresAt:     0, // No expiry for default policy
-		Rules:         DefaultRuntimeRules(),
+		PolicyVersion: s.versionStore.Next(deviceID),
+		ExpiresAt:     uint32(expiresUnix),
+		Rules:         rules,
 	}
 
 	// Build and sign the complete ZTPV blob

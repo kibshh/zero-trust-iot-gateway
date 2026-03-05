@@ -39,24 +39,28 @@ func (s *Server) handleAttestationVerify(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Validate device_id format (hex, 16 bytes)
 	rawID, err := hex.DecodeString(req.DeviceID)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device_id", http.StatusBadRequest)
 		return
 	}
 
+	// Validate firmware_hash format (hex, 32 bytes)
 	firmwareHash, err := hex.DecodeString(req.FirmwareHash)
 	if err != nil || len(firmwareHash) != attestation.FirmwareHashSize {
 		http.Error(w, "invalid firmware_hash", http.StatusBadRequest)
 		return
 	}
 
+	// Validate signature format (hex, max 72 bytes)
 	signatureDER, err := hex.DecodeString(req.Signature)
 	if err != nil || len(signatureDER) == 0 || len(signatureDER) > attestation.MaxSignatureSize {
 		http.Error(w, "invalid signature", http.StatusBadRequest)
 		return
 	}
 
+	// Verify device is registered before passing to attestation service
 	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return

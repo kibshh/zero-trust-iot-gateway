@@ -24,6 +24,7 @@ type deviceInfoResponse struct {
 func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/devices/")
 
+	// Validate device id format (hex, 16 bytes)
 	rawID, err := hex.DecodeString(id)
 	if err != nil || len(rawID) != attestation.DeviceIDSize {
 		http.Error(w, "invalid device id", http.StatusBadRequest)
