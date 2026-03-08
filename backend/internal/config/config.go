@@ -13,21 +13,23 @@ import (
 )
 
 const (
-	EnvServerHost            = "ZTG_SERVER_HOST"
-	EnvServerPort            = "ZTG_SERVER_PORT"
-	EnvServerReadTimeoutSec  = "ZTG_SERVER_READ_TIMEOUT_SEC"
-	EnvServerWriteTimeoutSec = "ZTG_SERVER_WRITE_TIMEOUT_SEC"
-	EnvServerIdleTimeoutSec  = "ZTG_SERVER_IDLE_TIMEOUT_SEC"
-	EnvSigningKeyPath        = "ZTG_SIGNING_KEY_PATH"
-	EnvDatabaseDSN           = "ZTG_DATABASE_DSN"
-	EnvTLSEnabled            = "ZTG_TLS_ENABLED"
-	EnvTLSCertFile           = "ZTG_TLS_CERT_FILE"
-	EnvTLSKeyFile            = "ZTG_TLS_KEY_FILE"
-	EnvTLSClientCAFile       = "ZTG_TLS_CLIENT_CA_FILE"
-	EnvTLSRequireClientCert  = "ZTG_TLS_REQUIRE_CLIENT_CERT"
-	EnvTLSMinVersion         = "ZTG_TLS_MIN_VERSION"
-	EnvDevEphemeralKey       = "ZTG_DEV_EPHEMERAL_KEY"
-	EnvPolicyTTLSec          = "ZTG_POLICY_TTL_SEC"
+	EnvServerHost                = "ZTG_SERVER_HOST"
+	EnvServerPort                = "ZTG_SERVER_PORT"
+	EnvServerReadTimeoutSec      = "ZTG_SERVER_READ_TIMEOUT_SEC"
+	EnvServerWriteTimeoutSec     = "ZTG_SERVER_WRITE_TIMEOUT_SEC"
+	EnvServerIdleTimeoutSec      = "ZTG_SERVER_IDLE_TIMEOUT_SEC"
+	EnvSigningKeyPath            = "ZTG_SIGNING_KEY_PATH"
+	EnvDatabaseDSN               = "ZTG_DATABASE_DSN"
+	EnvTLSEnabled                = "ZTG_TLS_ENABLED"
+	EnvTLSCertFile               = "ZTG_TLS_CERT_FILE"
+	EnvTLSKeyFile                = "ZTG_TLS_KEY_FILE"
+	EnvTLSClientCAFile           = "ZTG_TLS_CLIENT_CA_FILE"
+	EnvTLSRequireClientCert      = "ZTG_TLS_REQUIRE_CLIENT_CERT"
+	EnvTLSMinVersion             = "ZTG_TLS_MIN_VERSION"
+	EnvDevEphemeralKey           = "ZTG_DEV_EPHEMERAL_KEY"
+	EnvPolicyTTLSec              = "ZTG_POLICY_TTL_SEC"
+	EnvAuditMaxRecordsPerRequest = "ZTG_AUDIT_MAX_RECORDS_PER_REQUEST"
+	EnvAuditMaxBodyBytes         = "ZTG_AUDIT_MAX_BODY_BYTES"
 
 	MinPortNumber = 1
 	MaxPortNumber = 65535
@@ -36,8 +38,17 @@ const (
 	TLSVersion13 = "1.3"
 
 	// DefaultPolicyTTLSec is a short TTL suitable for dev; production should set
-	// ZTG_POLICY_TTL_SEC to match the device re-attestation interval. - TODO
+	// ZTG_POLICY_TTL_SEC to match the device re-attestation interval.
 	DefaultPolicyTTLSec = 3600
+
+	// DefaultAuditMaxRecordsPerRequest matches the ESP32 MaxAuditCollectSize:
+	// PolicyEngine::AuditBufferSize (32) × 2 engines (policy + baseline) = 64.
+	// A single device flush will never exceed 64 records, so this is the natural server ceiling.
+	DefaultAuditMaxRecordsPerRequest = 64
+	// DefaultAuditMaxBodyBytes is sized to comfortably hold a worst-case full flush:
+	// 64 records × ~60 bytes each (7 uint8 fields + 32-char hex device ID as JSON) ≈ 4 KiB.
+	// 16 KiB gives 4× headroom for JSON overhead while remaining trivial for the server to buffer.
+	DefaultAuditMaxBodyBytes = 16 * 1024
 )
 
 // TLSConfig holds TLS settings.
@@ -52,30 +63,34 @@ type TLSConfig struct {
 
 // Config holds backend runtime configuration loaded from environment variables.
 type Config struct {
-	ServerHost            string
-	ServerPort            int
-	ServerReadTimeoutSec  int
-	ServerWriteTimeoutSec int
-	ServerIdleTimeoutSec  int
-	SigningKeyPath        string
-	DatabaseDSN           string
-	PolicyTTLSec          int
-	DevEphemeralKey       bool
-	TLS                   TLSConfig
+	ServerHost                string
+	ServerPort                int
+	ServerReadTimeoutSec      int
+	ServerWriteTimeoutSec     int
+	ServerIdleTimeoutSec      int
+	SigningKeyPath            string
+	DatabaseDSN               string
+	PolicyTTLSec              int
+	AuditMaxRecordsPerRequest int
+	AuditMaxBodyBytes         int
+	DevEphemeralKey           bool
+	TLS                       TLSConfig
 }
 
 // LoadFromEnv loads and validates configuration from environment variables.
 func LoadFromEnv() (Config, error) {
 	cfg := Config{
-		ServerHost:            envOrDefault(EnvServerHost, "0.0.0.0"),
-		ServerPort:            intEnvOrDefault(EnvServerPort, 8080),
-		ServerReadTimeoutSec:  intEnvOrDefault(EnvServerReadTimeoutSec, 15),
-		ServerWriteTimeoutSec: intEnvOrDefault(EnvServerWriteTimeoutSec, 15),
-		ServerIdleTimeoutSec:  intEnvOrDefault(EnvServerIdleTimeoutSec, 60),
-		SigningKeyPath:        strings.TrimSpace(os.Getenv(EnvSigningKeyPath)),
-		DatabaseDSN:           strings.TrimSpace(os.Getenv(EnvDatabaseDSN)),
-		PolicyTTLSec:          intEnvOrDefault(EnvPolicyTTLSec, DefaultPolicyTTLSec),
-		DevEphemeralKey:       boolEnvOrDefault(EnvDevEphemeralKey, false),
+		ServerHost:                envOrDefault(EnvServerHost, "0.0.0.0"),
+		ServerPort:                intEnvOrDefault(EnvServerPort, 8080),
+		ServerReadTimeoutSec:      intEnvOrDefault(EnvServerReadTimeoutSec, 15),
+		ServerWriteTimeoutSec:     intEnvOrDefault(EnvServerWriteTimeoutSec, 15),
+		ServerIdleTimeoutSec:      intEnvOrDefault(EnvServerIdleTimeoutSec, 60),
+		SigningKeyPath:            strings.TrimSpace(os.Getenv(EnvSigningKeyPath)),
+		DatabaseDSN:               strings.TrimSpace(os.Getenv(EnvDatabaseDSN)),
+		PolicyTTLSec:              intEnvOrDefault(EnvPolicyTTLSec, DefaultPolicyTTLSec),
+		AuditMaxRecordsPerRequest: intEnvOrDefault(EnvAuditMaxRecordsPerRequest, DefaultAuditMaxRecordsPerRequest),
+		AuditMaxBodyBytes:         intEnvOrDefault(EnvAuditMaxBodyBytes, DefaultAuditMaxBodyBytes),
+		DevEphemeralKey:           boolEnvOrDefault(EnvDevEphemeralKey, false),
 		TLS: TLSConfig{
 			Enabled:           boolEnvOrDefault(EnvTLSEnabled, false),
 			CertFile:          strings.TrimSpace(os.Getenv(EnvTLSCertFile)),
@@ -112,6 +127,12 @@ func (c Config) Validate() error {
 	}
 	if c.PolicyTTLSec <= 0 {
 		return fmt.Errorf("invalid %s: must be > 0", EnvPolicyTTLSec)
+	}
+	if c.AuditMaxRecordsPerRequest <= 0 {
+		return fmt.Errorf("invalid %s: must be > 0", EnvAuditMaxRecordsPerRequest)
+	}
+	if c.AuditMaxBodyBytes <= 0 {
+		return fmt.Errorf("invalid %s: must be > 0", EnvAuditMaxBodyBytes)
 	}
 	if c.DevEphemeralKey && c.SigningKeyPath != "" {
 		return fmt.Errorf("invalid config: %s and %s are mutually exclusive", EnvDevEphemeralKey, EnvSigningKeyPath)

@@ -18,21 +18,25 @@ type Server struct {
 	httpServer *http.Server
 	addr       string
 
-	attestationSvc attestation.Service
-	authorizer     *device.Authorizer
-	deviceStore    device.Store
-	deviceSvc      device.Service
-	policySvc      policy.Service
-	auditSink      audit.Sink
+	attestationSvc            attestation.Service
+	authorizer                *device.Authorizer
+	deviceStore               device.Store
+	deviceSvc                 device.Service
+	policySvc                 policy.Service
+	auditSink                 audit.Sink
+	auditMaxRecordsPerRequest int
+	auditMaxBodyBytes         int
 }
 
 // Config holds server configuration
 type Config struct {
-	Host         string
-	Port         int
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	IdleTimeout  time.Duration
+	Host                      string
+	Port                      int
+	ReadTimeout               time.Duration
+	WriteTimeout              time.Duration
+	IdleTimeout               time.Duration
+	AuditMaxRecordsPerRequest int
+	AuditMaxBodyBytes         int
 }
 
 // DefaultConfig returns a default server configuration
@@ -60,13 +64,15 @@ func New(
 	mux := http.NewServeMux()
 
 	server := &Server{
-		addr:           addr,
-		attestationSvc: attestationSvc,
-		authorizer:     authorizer,
-		deviceStore:    deviceStore,
-		deviceSvc:      deviceSvc,
-		policySvc:      policySvc,
-		auditSink:      auditSink,
+		addr:                      addr,
+		attestationSvc:            attestationSvc,
+		authorizer:                authorizer,
+		deviceStore:               deviceStore,
+		deviceSvc:                 deviceSvc,
+		policySvc:                 policySvc,
+		auditSink:                 auditSink,
+		auditMaxRecordsPerRequest: cfg.AuditMaxRecordsPerRequest,
+		auditMaxBodyBytes:         cfg.AuditMaxBodyBytes,
 	}
 	// Register API routes
 	server.registerRoutes(mux)

@@ -88,11 +88,13 @@ func run(ctx context.Context) error {
 
 	// Build server config from loaded configuration
 	srvCfg := server.Config{
-		Host:         cfg.ServerHost,
-		Port:         cfg.ServerPort,
-		ReadTimeout:  time.Duration(cfg.ServerReadTimeoutSec) * time.Second,
-		WriteTimeout: time.Duration(cfg.ServerWriteTimeoutSec) * time.Second,
-		IdleTimeout:  time.Duration(cfg.ServerIdleTimeoutSec) * time.Second,
+		Host:                      cfg.ServerHost,
+		Port:                      cfg.ServerPort,
+		ReadTimeout:               time.Duration(cfg.ServerReadTimeoutSec) * time.Second,
+		WriteTimeout:              time.Duration(cfg.ServerWriteTimeoutSec) * time.Second,
+		IdleTimeout:               time.Duration(cfg.ServerIdleTimeoutSec) * time.Second,
+		AuditMaxRecordsPerRequest: cfg.AuditMaxRecordsPerRequest,
+		AuditMaxBodyBytes:         cfg.AuditMaxBodyBytes,
 	}
 	srv := server.New(
 		srvCfg,
