@@ -613,6 +613,7 @@ BackendStatus BackendClient::send_audit_records(
         return BackendStatus::NetworkError;
     }
 
+    cJSON_AddNumberToObject(root, BackendClient::JsonKeySchemaVersion, BackendClient::AuditSchemaVersion);
     cJSON_AddStringToObject(root, BackendClient::JsonKeyDeviceId, device_id_hex);
 
     cJSON* records_arr = cJSON_AddArrayToObject(root, BackendClient::JsonKeyRecords);
