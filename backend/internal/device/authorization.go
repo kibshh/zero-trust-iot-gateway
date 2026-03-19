@@ -2,6 +2,7 @@ package device
 
 import (
 	"bytes"
+	"context"
 	"errors"
 
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/policy"
@@ -28,9 +29,9 @@ func NewAuthorizer(deviceStore Store, policyStore policy.Store) *Authorizer {
 
 // Authorize checks if the device with given firmware is authorized.
 // Returns nil if authorized, error otherwise.
-func (a *Authorizer) Authorize(deviceID string, firmwareHash []byte) error {
+func (a *Authorizer) Authorize(ctx context.Context, deviceID string, firmwareHash []byte) error {
 	// Step 1: Load device
-	dev, err := a.deviceStore.Load(deviceID)
+	dev, err := a.deviceStore.Load(ctx, deviceID)
 	if err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func (a *Authorizer) Authorize(deviceID string, firmwareHash []byte) error {
 	}
 
 	// Step 3: Load active policy
-	pol, err := a.policyStore.LoadActive(deviceID)
+	pol, err := a.policyStore.LoadActive(ctx, deviceID)
 	if err != nil {
 		if errors.Is(err, policy.ErrPolicyNotFound) {
 			return ErrNoActivePolicy

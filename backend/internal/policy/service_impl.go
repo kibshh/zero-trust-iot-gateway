@@ -82,7 +82,7 @@ func (s *PolicyService) Issue(ctx context.Context, deviceID string) ([]byte, err
 	}
 
 	// Load policy from store
-	policy, err := s.store.Load(deviceID)
+	policy, err := s.store.Load(ctx, deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (s *PolicyService) IssueRuntime(ctx context.Context, deviceID string) ([]by
 		return nil, ErrPolicyExpiryOverflow
 	}
 	ztpvPolicy := &ZTPVPolicy{
-		PolicyVersion: s.versionStore.Next(deviceID),
+		PolicyVersion: s.versionStore.Next(ctx, deviceID),
 		ExpiresAt:     uint32(expiresUnix),
 		Rules:         rules,
 	}
@@ -156,7 +156,7 @@ func (s *PolicyService) IssueRuntime(ctx context.Context, deviceID string) ([]by
 // Revoke marks the policy for a device as revoked
 func (s *PolicyService) Revoke(ctx context.Context, deviceID string) error {
 	// Load the policy first
-	policy, err := s.store.Load(deviceID)
+	policy, err := s.store.Load(ctx, deviceID)
 	if err != nil {
 		return err
 	}
@@ -170,5 +170,5 @@ func (s *PolicyService) Revoke(ctx context.Context, deviceID string) error {
 	policy.Revoked = true
 
 	// Save back
-	return s.store.Save(policy)
+	return s.store.Save(ctx, policy)
 }

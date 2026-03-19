@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/attestation"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/audit"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/config"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/db"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/device"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/policy"
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/server"
@@ -53,11 +55,21 @@ func run(ctx context.Context) error {
 		log.Printf("WARNING: %s=true — ephemeral signing key in use; do not run in production", config.EnvDevEphemeralKey)
 	}
 
-	// TODO: Initialize database/storage
+	// Connect to PostgreSQL and run migrations
+	pool, err := pgxpool.New(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	}
+	defer pool.Close()
 
-	// Initialize stores
-	deviceStore := device.NewMemoryStore()
-	policyStore := policy.NewMemoryStore()
+	if err := db.Migrate(cfg.DatabaseDSN); err != nil {
+		return fmt.Errorf("running migrations: %w", err)
+	}
+	log.Println("Database migrations applied")
+
+	// Initialize stores (PostgreSQL)
+	deviceStore := device.NewPostgresStore(pool)
+	policyStore := policy.NewPostgresStore(pool)
 
 	// Initialize authorizer
 	authorizer := device.NewAuthorizer(deviceStore, policyStore)
@@ -66,7 +78,7 @@ func run(ctx context.Context) error {
 	deviceSvc := device.NewService(deviceStore)
 
 	// Initialize attestation registry and service
-	registry := attestation.NewMemoryRegistry()
+	registry := attestation.NewPostgresRegistry(pool)
 	attestationSvc := attestation.NewMemoryService(registry)
 
 	// Initialize policy service
@@ -77,14 +89,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("policy signer error: %w", err)
 	}
 	deviceSource := device.NewDeviceSourceAdapter(deviceStore)
-	versionStore := policy.NewMemoryVersionStore()
+	versionStore := policy.NewPostgresVersionStore(pool)
 	ruleSource := policy.NewDefaultRuleSource()
 	policyTTL := time.Duration(cfg.PolicyTTLSec) * time.Second
 	policySvc := policy.NewPolicyService(policyBuilder, ztpvBuilder, policySigner, policyStore, deviceSource, versionStore, ruleSource, policyTTL)
 
-	// Initialize audit sink (dev mode: in-memory)
-	// TODO: Replace with persistent storage
-	auditSink := audit.NewMemorySink()
+	// Initialize audit sink (PostgreSQL)
+	auditSink := audit.NewPostgresSink(pool)
 
 	// Build server config from loaded configuration
 	srvCfg := server.Config{

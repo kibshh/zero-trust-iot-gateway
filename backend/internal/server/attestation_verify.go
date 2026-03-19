@@ -61,7 +61,7 @@ func (s *Server) handleAttestationVerify(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Verify device is registered before passing to attestation service
-	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
+	if _, err := s.deviceStore.Load(r.Context(), req.DeviceID); err != nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}

@@ -3,10 +3,10 @@ package device
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/db"
 )
 
 type postgresStore struct {
@@ -18,8 +18,8 @@ func NewPostgresStore(pool *pgxpool.Pool) Store {
 	return &postgresStore{pool: pool}
 }
 
-func (s *postgresStore) Load(deviceID string) (*Device, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *postgresStore) Load(ctx context.Context, deviceID string) (*Device, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
 	row := s.pool.QueryRow(ctx,
@@ -41,8 +41,8 @@ func (s *postgresStore) Load(deviceID string) (*Device, error) {
 	return dev, nil
 }
 
-func (s *postgresStore) Save(dev *Device) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *postgresStore) Save(ctx context.Context, dev *Device) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
 	_, err := s.pool.Exec(ctx,
@@ -57,8 +57,8 @@ func (s *postgresStore) Save(dev *Device) error {
 	return err
 }
 
-func (s *postgresStore) List() ([]*Device, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *postgresStore) List(ctx context.Context) ([]*Device, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.BatchTimeout)
 	defer cancel()
 
 	rows, err := s.pool.Query(ctx,

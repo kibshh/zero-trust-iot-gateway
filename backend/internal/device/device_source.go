@@ -18,7 +18,7 @@ func NewDeviceSourceAdapter(store Store) *DeviceSourceAdapter {
 
 // GetDeviceInfo implements policy.DeviceSource
 func (a *DeviceSourceAdapter) GetDeviceInfo(ctx context.Context, deviceID string) (*policy.DeviceInfo, error) {
-	dev, err := a.store.Load(deviceID)
+	dev, err := a.store.Load(ctx, deviceID)
 	if err != nil {
 		return nil, err
 	}

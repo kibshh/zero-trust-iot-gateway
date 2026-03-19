@@ -38,8 +38,8 @@ func NewMemoryService(registry PublicKeyRegistry) *memoryService {
 }
 
 // Register stores the device's public key in the registry.
-func (s *memoryService) Register(_ context.Context, deviceID string, pubKeyDER []byte) error {
-	return s.registry.Register(deviceID, pubKeyDER)
+func (s *memoryService) Register(ctx context.Context, deviceID string, pubKeyDER []byte) error {
+	return s.registry.Register(ctx, deviceID, pubKeyDER)
 }
 
 // AddFirmwareHash adds a firmware hash to the whitelist
@@ -118,7 +118,7 @@ func (s *memoryService) Verify(ctx context.Context, req VerifyRequest) (VerifyRe
 		return VerifyResult{Granted: false}, nil
 	}
 
-	pubKeyDER, err := s.registry.Lookup(req.DeviceID)
+	pubKeyDER, err := s.registry.Lookup(ctx, req.DeviceID)
 	if err != nil {
 		return VerifyResult{Granted: false}, nil
 	}

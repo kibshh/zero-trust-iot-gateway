@@ -33,16 +33,16 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 
 	switch r.Method {
 	case http.MethodGet:
-		handleDeviceGet(s, w, id)
+		handleDeviceGet(s, w, r, id)
 	case http.MethodDelete:
-		handleDeviceDelete(s, w, id)
+		handleDeviceDelete(s, w, r, id)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func handleDeviceGet(s *Server, w http.ResponseWriter, id string) {
-	dev, err := s.deviceStore.Load(id)
+func handleDeviceGet(s *Server, w http.ResponseWriter, r *http.Request, id string) {
+	dev, err := s.deviceStore.Load(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, device.ErrDeviceNotFound) {
 			http.Error(w, "device not found", http.StatusNotFound)
@@ -63,8 +63,8 @@ func handleDeviceGet(s *Server, w http.ResponseWriter, id string) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func handleDeviceDelete(s *Server, w http.ResponseWriter, id string) {
-	dev, err := s.deviceStore.Load(id)
+func handleDeviceDelete(s *Server, w http.ResponseWriter, r *http.Request, id string) {
+	dev, err := s.deviceStore.Load(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, device.ErrDeviceNotFound) {
 			http.Error(w, "device not found", http.StatusNotFound)
@@ -80,7 +80,7 @@ func handleDeviceDelete(s *Server, w http.ResponseWriter, id string) {
 	}
 
 	dev.Status = device.StatusRevoked
-	if err := s.deviceStore.Save(dev); err != nil {
+	if err := s.deviceStore.Save(r.Context(), dev); err != nil {
 		http.Error(w, "revocation failed", http.StatusInternalServerError)
 		return
 	}

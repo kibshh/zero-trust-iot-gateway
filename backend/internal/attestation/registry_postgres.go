@@ -22,8 +22,8 @@ func NewPostgresRegistry(pool *pgxpool.Pool) PublicKeyRegistry {
 	return &postgresRegistry{pool: pool}
 }
 
-func (r *postgresRegistry) Lookup(deviceID string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), db.QueryTimeout)
+func (r *postgresRegistry) Lookup(ctx context.Context, deviceID string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
 	var pubKeyDER []byte
@@ -40,8 +40,8 @@ func (r *postgresRegistry) Lookup(deviceID string) ([]byte, error) {
 	return pubKeyDER, nil
 }
 
-func (r *postgresRegistry) Register(deviceID string, pubKeyDER []byte) error {
-	ctx, cancel := context.WithTimeout(context.Background(), db.QueryTimeout)
+func (r *postgresRegistry) Register(ctx context.Context, deviceID string, pubKeyDER []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
 	_, err := r.pool.Exec(ctx,

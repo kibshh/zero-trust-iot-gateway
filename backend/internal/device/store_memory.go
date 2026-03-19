@@ -1,6 +1,9 @@
 package device
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type memoryStore struct {
 	mu      sync.RWMutex
@@ -13,7 +16,7 @@ func NewMemoryStore() Store {
 	}
 }
 
-func (s *memoryStore) Load(deviceID string) (*Device, error) {
+func (s *memoryStore) Load(_ context.Context, deviceID string) (*Device, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -24,7 +27,7 @@ func (s *memoryStore) Load(deviceID string) (*Device, error) {
 	return dev, nil
 }
 
-func (s *memoryStore) Save(device *Device) error {
+func (s *memoryStore) Save(_ context.Context, device *Device) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -32,7 +35,7 @@ func (s *memoryStore) Save(device *Device) error {
 	return nil
 }
 
-func (s *memoryStore) List() ([]*Device, error) {
+func (s *memoryStore) List(_ context.Context) ([]*Device, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

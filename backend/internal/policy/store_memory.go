@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -16,7 +17,7 @@ func NewMemoryStore() Store {
 	}
 }
 
-func (s *memoryStore) Load(deviceID string) (*Policy, error) {
+func (s *memoryStore) Load(_ context.Context, deviceID string) (*Policy, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -28,7 +29,7 @@ func (s *memoryStore) Load(deviceID string) (*Policy, error) {
 	return pol, nil
 }
 
-func (s *memoryStore) LoadActive(deviceID string) (*Policy, error) {
+func (s *memoryStore) LoadActive(_ context.Context, deviceID string) (*Policy, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -45,7 +46,7 @@ func (s *memoryStore) LoadActive(deviceID string) (*Policy, error) {
 	return pol, nil
 }
 
-func (s *memoryStore) Save(policy *Policy) error {
+func (s *memoryStore) Save(_ context.Context, policy *Policy) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

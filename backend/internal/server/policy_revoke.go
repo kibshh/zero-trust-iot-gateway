@@ -35,7 +35,7 @@ func (s *Server) handlePolicyRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
+	if _, err := s.deviceStore.Load(r.Context(), req.DeviceID); err != nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}

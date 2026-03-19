@@ -45,7 +45,7 @@ func (s *Server) handleAttestationChallenge(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Verify device is registered before issuing a challenge
-	if _, err := s.deviceStore.Load(req.DeviceID); err != nil {
+	if _, err := s.deviceStore.Load(r.Context(), req.DeviceID); err != nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
