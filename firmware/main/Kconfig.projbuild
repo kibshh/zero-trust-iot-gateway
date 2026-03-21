@@ -1,0 +1,82 @@
+menu "Zero-Trust IoT Gateway"
+
+    menu "Wi-Fi"
+
+        config ZTGW_WIFI_SSID
+            string "Wi-Fi SSID"
+            default "MyNetwork"
+            help
+                SSID of the Wi-Fi network to join in station mode.
+                Can be overridden at runtime by storing "ssid" in NVS namespace "wifi".
+
+        config ZTGW_WIFI_PASSWORD
+            string "Wi-Fi Password"
+            default ""
+            help
+                Password for the Wi-Fi network.
+                Can be overridden at runtime by storing "password" in NVS namespace "wifi".
+
+        config ZTGW_WIFI_CONNECT_TIMEOUT_MS
+            int "Wi-Fi connect timeout (ms)"
+            default 15000
+            range 1000 60000
+            help
+                Absolute deadline for WiFiManager::connect() to obtain an IP address.
+                The timer starts when esp_wifi_start() is called. If no GOT_IP event
+                arrives within this window, connect() returns Timeout regardless of
+                how many retries remain.
+
+        config ZTGW_WIFI_MAX_RETRY
+            int "Wi-Fi association retry count"
+            default 5
+            range 1 20
+            help
+                How many times WiFiManager retries esp_wifi_connect() after a
+                DISCONNECTED event before giving up and returning AuthFailed.
+                Each retry happens immediately on disconnect; backoff is not applied
+                at this layer — the boot sequence handles delays between full attempts.
+
+    endmenu
+
+    menu "Backend"
+
+        config ZTGW_BACKEND_URL
+            string "Backend base URL"
+            default "https://192.168.1.100:8080"
+            help
+                Base URL of the backend server (no trailing slash).
+                This is the trusted baseline compiled into the firmware.
+                In production builds, runtime override is disabled.
+                In development builds (ZTGW_BACKEND_ALLOW_NVS_OVERRIDE=y),
+                the value stored as "url" in NVS namespace "backend" takes precedence.
+
+        config ZTGW_BACKEND_TIMEOUT_MS
+            int "Backend request timeout (ms)"
+            default 10000
+            range 1000 60000
+            help
+                Per-request HTTP timeout in milliseconds.
+                Tunable at runtime via NVS when ZTGW_BACKEND_ALLOW_NVS_OVERRIDE is enabled.
+
+        config ZTGW_BACKEND_PUBKEY_DER_HEX
+            string "Backend signing public key (DER hex)"
+            default ""
+            help
+                Hex-encoded DER SubjectPublicKeyInfo of the backend's ECDSA P-256 signing key.
+                Backend-issued policies are verified against this key.
+                This value is the trust anchor and must always be set in production.
+                It is paired with ZTGW_BACKEND_URL — both must be updated together
+                when rotating the backend identity.
+
+        config ZTGW_BACKEND_ALLOW_NVS_OVERRIDE
+            bool "Allow backend URL/timeout to be overridden from NVS (development only)"
+            default n
+            help
+                When enabled, values stored in NVS namespace "backend" (keys: "url",
+                "timeout_ms") override the Kconfig defaults at runtime.
+                NEVER enable in production — it allows redirecting the device to an
+                untrusted backend. The pinned public key is never overridable via NVS.
+
+    endmenu
+
+endmenu
