@@ -2,6 +2,7 @@
 
 #include "esp_http_client.h"
 #include "cJSON.h"
+#include "nvs.h"
 
 #include <cstring>
 #include <cstdio>
@@ -10,12 +11,42 @@ namespace zerotrust::backend {
 
 namespace {
 
-// HTTP response buffer
+size_t hex_decode(const char* hex, uint8_t* out, size_t out_max)
+{
+    size_t len = strlen(hex);
+    if (len == 0 || len % 2 != 0) {
+        return 0;
+    }
+    size_t byte_len = len / 2;
+    if (byte_len > out_max) {
+        return 0;
+    }
+    for (size_t i = 0; i < byte_len; ++i) {
+        unsigned int byte = 0;
+        if (sscanf(hex + (i * 2), "%02x", &byte) != 1) {
+            return 0;
+        }
+        out[i] = static_cast<uint8_t>(byte);
+    }
+    return byte_len;
+}
+
 struct HttpBuffer {
     char* data;
     size_t len;
     size_t capacity;
 };
+
+// Private error base for this component (0x8000 is unallocated in IDF 5.x).
+// IDF-defined bases in use: 0x1000–0x1500, 0x2000–0x7000, 0x9000–0xF000.
+// Using this range avoids collisions if IDF ever extends ESP_ERR_HTTP_BASE
+// beyond its current +0x0A boundary.
+static constexpr esp_err_t ErrBase = static_cast<esp_err_t>(0x8000);
+
+// ErrResponseTooLarge was removed in IDF 5.x.
+// Redefined here in our private range so the event handler can signal
+// response buffer overflow distinctly from any IDF-owned error code.
+static constexpr esp_err_t ErrResponseTooLarge = ErrBase + 1;
 
 // HTTP event handler for collecting response body
 esp_err_t http_event_handler(esp_http_client_event_t* evt)
@@ -32,7 +63,7 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt)
                     buf->data[buf->len] = '\0';
                 }
                 else {
-                    return ESP_ERR_HTTP_RESPONSE_TOO_LARGE;
+                    return ErrResponseTooLarge;
                 }
             }
             break;
@@ -129,10 +160,10 @@ BackendStatus BackendClient::request_attestation_challenge(
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
-        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+        if (err == ErrResponseTooLarge) {
             return BackendStatus::InvalidResponse;
         }
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -238,10 +269,10 @@ BackendStatus BackendClient::verify_attestation(const attestation::AttestationRe
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
-        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+        if (err == ErrResponseTooLarge) {
             return BackendStatus::InvalidResponse;
         }
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -329,7 +360,7 @@ BackendStatus BackendClient::register_device(
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
         memset(public_key_hex, 0, sizeof(public_key_hex));
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -413,10 +444,10 @@ BackendStatus BackendClient::request_authorization(
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
-        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+        if (err == ErrResponseTooLarge) {
             return BackendStatus::InvalidResponse;
         }
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -528,10 +559,10 @@ BackendStatus BackendClient::request_runtime_policy(
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
-        if (err == ESP_ERR_HTTP_RESPONSE_TOO_LARGE) {
+        if (err == ErrResponseTooLarge) {
             return BackendStatus::InvalidResponse;
         }
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -669,7 +700,7 @@ BackendStatus BackendClient::send_audit_records(
 
     if (err != ESP_OK) {
         esp_http_client_cleanup(client);
-        if (err == ESP_ERR_HTTP_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
             return BackendStatus::Timeout;
         }
         return BackendStatus::NetworkError;
@@ -688,6 +719,78 @@ BackendStatus BackendClient::send_audit_records(
         default:
             return BackendStatus::InvalidResponse;
     }
+}
+
+bool load_config(BackendConfigStore& out)
+{
+    memset(&out, 0, sizeof(out));
+
+    // Step 1: Kconfig baseline — always applied first
+    strncpy(out.url, CONFIG_ZTGW_BACKEND_URL, BackendConfigStore::UrlMaxLen - 1);
+    out.url[BackendConfigStore::UrlMaxLen - 1] = '\0';
+    out.timeout_ms = CONFIG_ZTGW_BACKEND_TIMEOUT_MS;
+
+    // Step 2: Pinned public key — mandatory trust anchor, always from Kconfig.
+    // Structural validity is verified by mbedTLS when the key is first used;
+    // here we only check that the hex decodes to a non-empty byte sequence.
+    const char* pubkey_hex = CONFIG_ZTGW_BACKEND_PUBKEY_DER_HEX;
+    if (pubkey_hex[0] == '\0') {
+        printf("[BACKEND] FATAL: No pinned public key configured (ZTGW_BACKEND_PUBKEY_DER_HEX is empty)\n");
+        return false;
+    }
+    out.pinned_pubkey_der_len = hex_decode(
+        pubkey_hex, out.pinned_pubkey_der, sizeof(out.pinned_pubkey_der));
+    if (out.pinned_pubkey_der_len == 0) {
+        printf("[BACKEND] FATAL: ZTGW_BACKEND_PUBKEY_DER_HEX is not valid hex\n");
+        return false;
+    }
+    printf("[BACKEND] Pinned public key loaded from Kconfig (%zu bytes)\n", out.pinned_pubkey_der_len);
+
+#if CONFIG_ZTGW_BACKEND_ALLOW_NVS_OVERRIDE
+    // Step 3: Development-only NVS overrides for URL and timeout.
+    // The pinned public key is intentionally excluded from NVS override.
+    nvs_handle_t handle;
+    if (nvs_open(BackendConfigStore::NvsNamespace, NVS_READONLY, &handle) == ESP_OK) {
+        char nvs_url[BackendConfigStore::UrlMaxLen] = {};
+        size_t len = sizeof(nvs_url);
+        if (nvs_get_str(handle, BackendConfigStore::NvsKeyUrl, nvs_url, &len) == ESP_OK) {
+            if (nvs_url[0] == '\0') {
+                printf("[BACKEND] NVS URL is empty — ignoring, keeping Kconfig value\n");
+            } else if (len >= BackendConfigStore::UrlMaxLen) {
+                printf("[BACKEND] NVS URL exceeds maximum length (%zu) — ignoring\n",
+                       BackendConfigStore::UrlMaxLen - 1);
+            } else {
+                strncpy(out.url, nvs_url, BackendConfigStore::UrlMaxLen - 1);
+                out.url[BackendConfigStore::UrlMaxLen - 1] = '\0';
+                printf("[BACKEND] URL overridden from NVS: %s\n", out.url);
+            }
+        }
+
+        uint32_t nvs_timeout = 0;
+        if (nvs_get_u32(handle, BackendConfigStore::NvsKeyTimeout, &nvs_timeout) == ESP_OK) {
+            if (nvs_timeout < BackendConfigStore::MinTimeoutMs || nvs_timeout > BackendConfigStore::MaxTimeoutMs) {
+                printf("[BACKEND] NVS timeout is not in range — ignoring, keeping Kconfig value\n");
+            } else {
+                out.timeout_ms = nvs_timeout;
+                printf("[BACKEND] Timeout overridden from NVS: %lu ms\n",
+                       static_cast<unsigned long>(out.timeout_ms));
+            }
+        }
+
+        nvs_close(handle);
+    }
+#endif
+
+    printf("[BACKEND] URL: %s (timeout: %lu ms, source: %s)\n",
+           out.url,
+           static_cast<unsigned long>(out.timeout_ms),
+#if CONFIG_ZTGW_BACKEND_ALLOW_NVS_OVERRIDE
+           "Kconfig+NVS"
+#else
+           "Kconfig"
+#endif
+    );
+    return true;
 }
 
 } // namespace zerotrust::backend

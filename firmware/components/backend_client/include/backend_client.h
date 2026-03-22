@@ -33,10 +33,36 @@ enum class HttpStatusCode : int {
 };
 
 struct BackendConfig {
-    // String must have static lifetime (e.g., const char* or string literal)
-    // String must be null-terminated
-    const char* base_url;       // e.g., "https://192.168.1.100:8080"
-    uint32_t timeout_ms;        // Request timeout
+    const char*    base_url;
+    uint32_t       timeout_ms;
+    const uint8_t* pinned_pubkey;
+    size_t         pinned_pubkey_len;
+};
+
+// Owns the config buffers so pointers in BackendConfig stay valid.
+// Populated by load_config(), then converted via as_backend_config().
+struct BackendConfigStore {
+    static constexpr size_t      UrlMaxLen          = 128;
+    static constexpr size_t      PinnedPubkeyDerMax = 256;
+    static constexpr uint32_t    MinTimeoutMs       = 1000;
+    static constexpr uint32_t    MaxTimeoutMs       = 60000;
+    static constexpr const char* NvsNamespace       = "backend";
+    static constexpr const char* NvsKeyUrl          = "url";
+    static constexpr const char* NvsKeyTimeout      = "timeout_ms";
+
+    char     url[UrlMaxLen];
+    uint32_t timeout_ms;
+    uint8_t  pinned_pubkey_der[PinnedPubkeyDerMax];
+    size_t   pinned_pubkey_der_len;
+
+    BackendConfig as_backend_config() const {
+        return {
+            .base_url          = url,
+            .timeout_ms        = timeout_ms,
+            .pinned_pubkey     = pinned_pubkey_der,
+            .pinned_pubkey_len = pinned_pubkey_der_len,
+        };
+    }
 };
 
 // Received challenge from backend
@@ -67,7 +93,7 @@ public:
     static constexpr size_t PublicKeyDerMax = 256;
     static constexpr size_t AttestationChallengeReqJsonBodyBufferSize = 64; // {"device_id":"<hex>"}
     static constexpr size_t AttestationVerifyJsonBodyBufferSize = 512; // {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
-    static constexpr size_t AuthorizationRequestJsonBodyBufferSize = 128; // {"device_id":"<hex>","firmware_hash":"<hex>"}
+    static constexpr size_t AuthorizationRequestJsonBodyBufferSize = 160; // {"device_id":"<32-hex>","firmware_hash":"<64-hex>"}
     static constexpr size_t RegisterDeviceJsonBodyBufferSize = 640; // {"device_id":"<hex>","public_key":"<hex>"}
     static constexpr size_t PolicyIssueJsonBodyBufferSize = 64; // {"device_id":"<hex>"}
     static constexpr size_t ResponseBufferSize = 2560;
@@ -97,7 +123,7 @@ public:
     static constexpr uint8_t AuditSchemaVersion = 1;
     static constexpr size_t MaxAuditRecordsPerFlush = 64;
 
-    explicit BackendClient() : initialized_(false), config_{ nullptr, 0 } {}
+    explicit BackendClient() : initialized_(false), config_{ nullptr, 0, nullptr, 0 } {}
     ~BackendClient() = default;
 
     // Initialize client with backend URL and settings
@@ -168,6 +194,13 @@ private:
     bool initialized_;
     BackendConfig config_;
 };
+
+// Load backend configuration from Kconfig baseline + optional NVS override.
+// The pinned public key is always loaded from Kconfig (trust anchor).
+// URL and timeout are overridable from NVS only when
+// CONFIG_ZTGW_BACKEND_ALLOW_NVS_OVERRIDE is enabled.
+// NVS must be initialised before calling this function.
+bool load_config(BackendConfigStore& out);
 
 } // namespace zerotrust::backend
 
