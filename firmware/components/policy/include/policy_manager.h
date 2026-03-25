@@ -27,6 +27,8 @@ public:
     static constexpr size_t MaxBackendPubKeySize = 256;
     // Maximum audit records collectible from both engines
     static constexpr size_t MaxAuditCollectSize = PolicyEngine::AuditBufferSize * 2;
+    // Refresh the policy when this many seconds or fewer remain before expiry
+    static constexpr int64_t PolicyRefreshThresholdSec = 300;  // 5 minutes
 
     PolicyManager(identity::IdentityManager& identity, PolicyEngine& baseline_engine);
     ~PolicyManager() = default;

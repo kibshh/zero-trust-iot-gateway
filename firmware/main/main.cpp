@@ -6,7 +6,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "esp_netif.h"
+#include "esp_event.h"
 
+#include "wifi_manager.h"
 #include "system_state.h"
 #include "identity.h"
 #include "attestation.h"
@@ -21,10 +24,10 @@ namespace {
 
 // Boot sequence retry configuration
 struct RetryConfig {
-    static constexpr uint32_t InitialDelayMs = 1000;
-    static constexpr uint32_t MaxDelayMs = 30000;
+    static constexpr uint32_t InitialDelayMs    = 1000;
+    static constexpr uint32_t MaxDelayMs        = 30000;
     static constexpr uint32_t BackoffMultiplier = 2;
-    static constexpr uint32_t MaxAttempts = 0; // 0 = unlimited
+    static constexpr uint32_t MaxAttempts       = 0;  // 0 = unlimited
 };
 
 // Main loop tick interval (milliseconds)
@@ -32,24 +35,42 @@ constexpr uint32_t MainLoopIntervalMs = 1000;
 
 // Operational main loop intervals (in ticks, each tick = MainLoopIntervalMs)
 struct OperationalIntervals {
-    static constexpr uint32_t ReAttestTicks = 3600;      // Re-attest every 1 hour
-    static constexpr uint32_t PolicyRefreshTicks = 300;  // Check policy refresh every 5 minutes
-    static constexpr uint32_t AuditFlushTicks = 300;     // Flush audit records every 5 minutes
+    static constexpr uint32_t ReAttestTicks      = 3600;  // Re-attest every 1 hour
+    static constexpr uint32_t PolicyRefreshTicks = 300;   // Check policy refresh every 5 minutes
+    static constexpr uint32_t AuditFlushTicks    = 300;   // Flush audit records every 5 minutes
 };
 
-// Elapsed-since-last-run check that handles uint32_t wrap-around correctly
-// Works because unsigned subtraction wraps: if tick=5 and last=0xFFFFFFF0, (5 - 0xFFFFFFF0) = 21
+// Elapsed-since-last-run check that handles uint32_t wrap-around correctly.
+// Works because unsigned subtraction wraps: (5 - 0xFFFFFFF0) = 21.
 bool is_interval_elapsed(uint32_t tick, uint32_t last_tick, uint32_t interval)
 {
     return (tick - last_tick) >= interval;
 }
 
-// Backend configuration
-// TODO: Load from NVS or Kconfig in production
-constexpr zerotrust::backend::BackendConfig DefaultBackendConfig = {
-    .base_url = "https://192.168.1.100:8080",
-    .timeout_ms = zerotrust::backend::BackendClient::DefaultTimeoutMs
-};
+// Handles the truncated/version-mismatch cases by erasing and re-initialising.
+bool init_nvs()
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        err = nvs_flash_erase();
+        if (err != ESP_OK) {
+            return false;
+        }
+        err = nvs_flash_init();
+    }
+    return err == ESP_OK;
+}
+
+// Initialise the TCP/IP stack and the default system event loop.
+// Must be called exactly once at boot, before any module that registers
+// event handlers (Wi-Fi, Bluetooth, …).
+bool init_networking()
+{
+    if (esp_netif_init() != ESP_OK) {
+        return false;
+    }
+    return esp_event_loop_create_default() == ESP_OK;
+}
 
 // Check if device is in a terminal state (locked or revoked)
 bool is_terminal_state(zerotrust::system_state::SystemState state)
@@ -70,10 +91,9 @@ uint32_t delay_with_backoff(uint32_t current_delay_ms)
     return next_delay;
 }
 
-// Retry a boot step until success, terminal state, or max attempts
-// step_fn: returns true on success, false to retry
-// step_name: human-readable name for logging
-// fsm: state machine to check for terminal states
+// Retries a boot step until it succeeds, the device enters a terminal state,
+// or MaxAttempts is reached (0 = unlimited). Applies exponential backoff between
+// attempts. Returns false if the step could not be completed.
 bool retry_step(
     bool (*step_fn)(zerotrust::system_controller::SystemController&),
     zerotrust::system_controller::SystemController& controller,
@@ -115,38 +135,10 @@ bool retry_step(
     }
 }
 
-// Step wrappers for retry_step (function pointer compatible)
-bool step_register(zerotrust::system_controller::SystemController& ctrl) { return ctrl.try_register_device(); }
-bool step_attest(zerotrust::system_controller::SystemController& ctrl) { return ctrl.try_attest(); }
-bool step_authorize(zerotrust::system_controller::SystemController& ctrl) { return ctrl.try_authorize(); }
+bool step_register(zerotrust::system_controller::SystemController& ctrl)    { return ctrl.try_register_device(); }
+bool step_attest(zerotrust::system_controller::SystemController& ctrl)      { return ctrl.try_attest(); }
+bool step_authorize(zerotrust::system_controller::SystemController& ctrl)   { return ctrl.try_authorize(); }
 bool step_load_policy(zerotrust::system_controller::SystemController& ctrl) { return ctrl.try_load_runtime_policy(); }
-
-// Initialize NVS flash
-// Returns true on success
-bool init_nvs()
-{
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // NVS partition was truncated, erase and retry
-        err = nvs_flash_erase();
-        if (err != ESP_OK) {
-            return false;
-        }
-        err = nvs_flash_init();
-    }
-    return err == ESP_OK;
-}
-
-// Initialize WiFi and connect to network
-// TODO: Implement proper WiFi initialization (station mode, WPA2, etc.)
-// Returns true on success
-bool init_wifi()
-{
-    // Placeholder - must be implemented with actual WiFi driver
-    // Should: init netif, create default station, set SSID/password, connect, wait for IP
-    printf("[BOOT] WiFi init: NOT IMPLEMENTED (placeholder)\n");
-    return true;
-}
 
 } // anonymous namespace
 
@@ -154,14 +146,46 @@ extern "C" void app_main(void)
 {
     printf("[BOOT] Zero-Trust IoT Gateway starting\n");
 
-    // Phase 0: Hardware initialization
+    // Phase 0: NVS + event loop — platform prerequisites
     if (!init_nvs()) {
         printf("[BOOT] FATAL: NVS initialization failed\n");
         return;
     }
+    if (!init_networking()) {
+        printf("[BOOT] FATAL: Networking initialization failed\n");
+        return;
+    }
 
-    if (!init_wifi()) {
-        printf("[BOOT] FATAL: WiFi initialization failed\n");
+    // Phase 1: Wi-Fi
+    zerotrust::wifi::WifiConfig wifi_cfg = {};
+    if (!zerotrust::wifi::load_config(wifi_cfg)) {
+        printf("[BOOT] FATAL: Failed to load Wi-Fi configuration\n");
+        return;
+    }
+
+    zerotrust::wifi::WiFiManager wifi_manager;
+    if (!wifi_manager.init()) {
+        printf("[BOOT] FATAL: Wi-Fi driver initialization failed\n");
+        return;
+    }
+
+    zerotrust::wifi::ConnectResult wifi_result = wifi_manager.connect(wifi_cfg);
+    if (wifi_result == zerotrust::wifi::ConnectResult::NoCredentials) {
+        // TODO (B1.3): Launch provisioning mode (AP + web UI) to capture credentials,
+        //              persist to NVS namespace "wifi", then reboot.
+        printf("[BOOT] FATAL: No Wi-Fi credentials — provisioning mode not yet implemented\n");
+        return;
+    }
+    if (wifi_result != zerotrust::wifi::ConnectResult::Connected) {
+        printf("[BOOT] FATAL: Wi-Fi connection failed (result=%u)\n",
+               static_cast<unsigned>(wifi_result));
+        return;
+    }
+
+    // Phase 2: Backend configuration
+    zerotrust::backend::BackendConfigStore backend_cfg = {};
+    if (!zerotrust::backend::load_config(backend_cfg)) {
+        printf("[BOOT] FATAL: Failed to load backend configuration\n");
         return;
     }
 
@@ -173,7 +197,7 @@ extern "C" void app_main(void)
     zerotrust::policy::PolicyManager policy_mgr(identity, baseline_engine);
     zerotrust::backend::BackendClient backend_client;
 
-    backend_client.init(DefaultBackendConfig);
+    backend_client.init(backend_cfg.as_backend_config());
 
     zerotrust::system_controller::SystemController controller(
         fsm, identity, attestation, policy_mgr, backend_client);
@@ -182,8 +206,8 @@ extern "C" void app_main(void)
     bool boot_ok = false;
 
     do {
-        // Phase 1: Identity initialization (Init → IdentityReady)
-        printf("[BOOT] Phase 1: Identity initialization\n");
+        // Phase 3: Identity initialization (Init - IdentityReady)
+        printf("[BOOT] Phase 3: Identity initialization\n");
         controller.on_boot();
 
         if (is_terminal_state(fsm.get_state())) {
@@ -197,33 +221,32 @@ extern "C" void app_main(void)
             break;
         }
 
-        // Phase 2: Time synchronization (non-blocking on failure)
-        printf("[BOOT] Phase 2: Time synchronization\n");
+        // Phase 4: Time synchronization (non-blocking on failure)
+        printf("[BOOT] Phase 4: Time synchronization\n");
         if (!controller.init_time_sync(nullptr, true, 30000)) {
-            // Time sync failure is NOT fatal - policy verifier handles missing time
             printf("[BOOT] WARNING: Time synchronization failed, continuing without accurate time\n");
         }
 
-        // Phase 3: Device registration (IdentityReady, no state change)
-        printf("[BOOT] Phase 3: Device registration\n");
+        // Phase 5: Device registration (IdentityReady, no state change)
+        printf("[BOOT] Phase 5: Device registration\n");
         if (!retry_step(step_register, controller, fsm, "register")) {
             break;
         }
 
-        // Phase 4: Attestation (IdentityReady → Attested)
-        printf("[BOOT] Phase 4: Attestation\n");
+        // Phase 6: Attestation (IdentityReady - Attested)
+        printf("[BOOT] Phase 6: Attestation\n");
         if (!retry_step(step_attest, controller, fsm, "attest")) {
             break;
         }
 
-        // Phase 5: Authorization (Attested → Authorized)
-        printf("[BOOT] Phase 5: Authorization\n");
+        // Phase 7: Authorization (Attested - Authorized)
+        printf("[BOOT] Phase 7: Authorization\n");
         if (!retry_step(step_authorize, controller, fsm, "authorize")) {
             break;
         }
 
-        // Phase 6: Runtime policy (Authorized → Operational)
-        printf("[BOOT] Phase 6: Loading runtime policy\n");
+        // Phase 8: Runtime policy (Authorized - Operational)
+        printf("[BOOT] Phase 8: Loading runtime policy\n");
         if (!retry_step(step_load_policy, controller, fsm, "load_policy")) {
             break;
         }
@@ -241,16 +264,14 @@ extern "C" void app_main(void)
     if (boot_ok) {
         printf("[BOOT] Boot sequence complete — device is Operational\n");
 
-        uint32_t tick = 0;
-        uint32_t last_audit_tick = 0;
+        uint32_t tick              = 0;
+        uint32_t last_audit_tick   = 0;
         uint32_t last_refresh_tick = 0;
-        uint32_t last_attest_tick = 0;
+        uint32_t last_attest_tick  = 0;
 
         while (!is_terminal_state(fsm.get_state())) {
-            // Per-tick: policy expiration check
             controller.on_periodic_tick();
 
-            // Flush audit records before policy refresh (avoids losing records on policy reload)
             // TODO: Use retvals (try_flush_audit, try_refresh_policy, try_re_attest_periodic)
             // for backoff, logging, or Degraded transition
             if (is_interval_elapsed(tick, last_audit_tick, OperationalIntervals::AuditFlushTicks)) {

@@ -177,7 +177,7 @@ void SystemController::on_policy_result(policy::PolicyLoadResult result)
 
         case policy::PolicyLoadResult::SecurityViolation:
             // Invalid signature, rollback attempt, device mismatch
-            // Trust is broken -> immediate lock
+            // Trust is broken - immediate lock
             process_event_or_lock(fsm_, system_state::SystemEvent::PolicyViolation);
             break;
         default:
@@ -633,8 +633,8 @@ bool SystemController::try_load_runtime_policy()
     }
 
     // Step 4: Pass blob to on_policy_blob_received which handles:
-    //   Parse → Verify signature → Anti-rollback → Persist to NVS → Activate
-    //   On success fires PolicyLoaded → Operational
+    //   Parse - Verify signature - Anti-rollback - Persist to NVS - Activate
+    //   On success fires PolicyLoaded - Operational
     on_policy_blob_received(policy_resp.policy_blob, policy_resp.policy_blob_len);
 
     // Step 5: Check if we reached Operational

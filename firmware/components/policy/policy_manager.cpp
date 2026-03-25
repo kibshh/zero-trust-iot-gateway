@@ -486,14 +486,14 @@ PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext&
 {
     PolicyDecision decision = PolicyDecision::Deny;
 
-    // 1. No policy active → baseline only
+    // 1. No policy active - baseline only
     if (!policy_active_) {
         decision = baseline_engine_.evaluate(action, ctx);
         audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
         return decision;
     }
 
-    // 2. Policy expired at runtime → baseline fallback
+    // 2. Policy expired at runtime - baseline fallback
     if (check_expiration(parsed_policy_.expires_at)) {
         decision = baseline_engine_.evaluate(action, ctx);
         audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
@@ -533,7 +533,7 @@ PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext&
         return decision;
     }
 
-    // 4. No matching rule → baseline fallback
+    // 4. No matching rule - baseline fallback
     decision = baseline_engine_.evaluate(action, ctx);
     audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
     return decision;

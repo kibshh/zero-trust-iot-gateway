@@ -19,9 +19,6 @@ namespace zerotrust::system_controller {
 // Owns no resources, only coordinates subsystems, thats why it uses references
 class SystemController {
 public:
-    // Refresh policy when fewer than this many seconds remain before expiration
-    static constexpr int64_t PolicyRefreshThresholdSec = 600;
-
     SystemController(system_state::SystemStateMachine& fsm,
                      identity::IdentityManager& identity,
                      attestation::AttestationEngine& attestation,

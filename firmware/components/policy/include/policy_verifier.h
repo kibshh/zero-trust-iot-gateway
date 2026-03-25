@@ -20,18 +20,6 @@ namespace AuthPolicyFormat {
     static constexpr size_t FirmwareHashSize = 32;
     static constexpr size_t MaxHashes = 16;
     
-    // Wire format: [payload_len:2 LE][payload][sig_len:2 LE][signature]
-    static constexpr size_t LengthFieldSize = 2;        // uint16_t LE for both lengths
-    static constexpr size_t SignatureMinSize = 8;       // Minimum valid ECDSA signature
-    static constexpr size_t SignatureMaxSize = 72;      // ECDSA P-256 DER max
-    
-    // Minimum blob size: len(2) + min_header(47) + len(2) + min_sig(8)
-    static constexpr size_t MinBlobSize = LengthFieldSize + HeaderSize + 
-                                          LengthFieldSize + SignatureMinSize;
-
-    static constexpr char Magic[AuthPolicyFormat::MagicSize] = {'Z', 'T', 'P', 'L'};
-    static constexpr uint8_t FormatVersion = 1;
-
     // Header layout:
     // Magic:              MagicSize bytes
     // Version:            VersionSize byte
@@ -42,11 +30,23 @@ namespace AuthPolicyFormat {
     // ExpiresAt:          TimestampSize bytes (big-endian, unix timestamp)
     // HashCount:          HashCountSize byte
     // AllowedHashes:      HashCount * FirmwareHashSize bytes
-    static constexpr size_t HeaderSize = MagicSize + VersionSize + FlagsSize + 
-                                         DeviceIdSize + MinFirmwareVersionSize + 
+    static constexpr size_t HeaderSize = MagicSize + VersionSize + FlagsSize +
+                                         DeviceIdSize + MinFirmwareVersionSize +
                                          TimestampSize + TimestampSize + HashCountSize;
     static constexpr size_t MinPayloadSize = HeaderSize;  // At least header (0 hashes valid)
     static constexpr size_t MaxPayloadSize = HeaderSize + MaxHashes * FirmwareHashSize;
+
+    // Wire format: [payload_len:2 LE][payload][sig_len:2 LE][signature]
+    static constexpr size_t LengthFieldSize  = 2;   // uint16_t LE for both lengths
+    static constexpr size_t SignatureMinSize = 8;   // Minimum valid ECDSA signature
+    static constexpr size_t SignatureMaxSize = 72;  // ECDSA P-256 DER max
+
+    // Minimum blob size: len(2) + min_header + len(2) + min_sig(8)
+    static constexpr size_t MinBlobSize = LengthFieldSize + HeaderSize +
+                                          LengthFieldSize + SignatureMinSize;
+
+    static constexpr char Magic[AuthPolicyFormat::MagicSize] = {'Z', 'T', 'P', 'L'};
+    static constexpr uint8_t FormatVersion = 1;
 }
 
 // Parsed authorization policy

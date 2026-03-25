@@ -1,6 +1,8 @@
 #include "identity.h"
 
+#include <cstring>
 #include "nvs.h"
+#include "esp_random.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/ecp.h"
 #include "mbedtls/ctr_drbg.h"
@@ -29,6 +31,7 @@ void IdentityManager::init()
     // NVS flash must be initialized by the caller (app_main) before calling init()
     // IdentityManager only opens its own namespace
     nvs_handle_t handle;
+    esp_err_t error;
     // Open identity namespace in read-only mode to probe for existing data
     error = nvs_open(IdentityManager::NvsNamespace, NVS_READONLY, &handle);
     if (error == ESP_ERR_NVS_NOT_FOUND) {
@@ -100,7 +103,7 @@ void IdentityManager::init()
         return;
     }
     // Validate algorithm to protect from downgrade attacks
-    if (meta.algorithm != static_cast<uint8_t>(KeyAlgorithm::ECDSA_P256)) {
+    if (meta.algorithm != KeyAlgorithm::ECDSA_P256) {
         key_status_ = KeyStatus::Corrupted;
         key_algorithm_ = KeyAlgorithm::None;
     } else {
@@ -272,7 +275,7 @@ bool IdentityManager::generate_keys()
         // IMPORTANT: Write key metadata LAST - it serves as a validity indicator
         // If key_meta exists and is valid, we assume all key data is complete and correct
         KeyMeta meta {
-            .algorithm = static_cast<uint8_t>(KeyAlgorithm::ECDSA_P256)
+            .algorithm = KeyAlgorithm::ECDSA_P256
         };
         error = nvs_set_blob(handle, IdentityManager::NvsKeyKeyMeta, &meta, sizeof(meta));
         if (error != ESP_OK) {
