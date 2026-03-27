@@ -10,6 +10,7 @@
 #include "esp_event.h"
 
 #include "wifi_manager.h"
+#include "provisioning.h"
 #include "system_state.h"
 #include "identity.h"
 #include "attestation.h"
@@ -157,6 +158,11 @@ extern "C" void app_main(void)
     }
 
     // Phase 1: Wi-Fi
+    // Check reset button before loading config — a long press erases NVS
+    // credentials so load_config() will signal NoCredentials on the next boot.
+    zerotrust::provisioning::ProvisioningManager provisioning;
+    provisioning.check_reset_button();
+
     zerotrust::wifi::WifiConfig wifi_cfg = {};
     if (!zerotrust::wifi::load_config(wifi_cfg)) {
         printf("[BOOT] FATAL: Failed to load Wi-Fi configuration\n");
@@ -171,10 +177,11 @@ extern "C" void app_main(void)
 
     zerotrust::wifi::ConnectResult wifi_result = wifi_manager.connect(wifi_cfg);
     if (wifi_result == zerotrust::wifi::ConnectResult::NoCredentials) {
-        // TODO (B1.3): Launch provisioning mode (AP + web UI) to capture credentials,
-        //              persist to NVS namespace "wifi", then reboot.
-        printf("[BOOT] FATAL: No Wi-Fi credentials — provisioning mode not yet implemented\n");
-        return;
+        if (!provisioning.run()) {
+            printf("[BOOT] FATAL: Provisioning mode failed to start\n");
+            return;
+        }
+        // provisioning.run() only returns false; on success it calls esp_restart().
     }
     if (wifi_result != zerotrust::wifi::ConnectResult::Connected) {
         printf("[BOOT] FATAL: Wi-Fi connection failed (result=%u)\n",

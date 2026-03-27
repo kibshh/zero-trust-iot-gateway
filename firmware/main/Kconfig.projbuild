@@ -38,6 +38,67 @@ menu "Zero-Trust IoT Gateway"
 
     endmenu
 
+    menu "Provisioning"
+
+        config ZTGW_PROV_AP_SSID
+            string "Provisioning AP SSID"
+            default "ZT-Gateway-Setup"
+            help
+                SSID of the softAP broadcast when the device has no Wi-Fi credentials.
+                Users connect to this network and open http://192.168.4.1/provision
+                to configure credentials.
+
+        config ZTGW_PROV_AP_CHANNEL
+            int "Provisioning AP channel"
+            default 1
+            range 1 13
+            help
+                Wi-Fi channel used for the provisioning softAP.
+                Change if channel 1 is congested in your environment.
+
+        config ZTGW_PROV_RESET_GPIO
+            int "Credential reset button GPIO pin"
+            default 0
+            range 0 39
+            help
+                GPIO pin number for the physical credential-reset button.
+                Holding this pin LOW for at least ZTGW_PROV_RESET_HOLD_MS milliseconds
+                at boot erases the stored Wi-Fi credentials from NVS, forcing
+                provisioning mode on the next boot.
+                GPIO 0 is the BOOT button on most ESP32 dev boards.
+
+        config ZTGW_PROV_RESET_HOLD_MS
+            int "Reset button hold time (ms)"
+            default 3000
+            range 500 10000
+            help
+                How long the reset button must be held continuously before
+                Wi-Fi credentials are erased from NVS. The hold may start
+                anywhere inside the detection window and may extend past it.
+                Shorter values risk accidental resets; longer values are inconvenient.
+
+        config ZTGW_PROV_RESET_WINDOW_MS
+            int "Reset button detection window (ms)"
+            default 5000
+            range 1000 30000
+            help
+                How long after boot the device waits for the user to start pressing
+                the reset button. The LED blinks fast throughout this window.
+                Must be >= ZTGW_PROV_RESET_HOLD_MS so the user has time to press
+                and hold within the window.
+
+        config ZTGW_PROV_LED_GPIO
+            int "Status LED GPIO pin"
+            default 2
+            range 0 39
+            help
+                GPIO pin connected to the status LED (active HIGH).
+                The LED blinks fast during the reset detection window to signal
+                that the device is ready to accept a credential-reset button press.
+                GPIO 2 is the built-in LED on most ESP32 dev boards.
+
+    endmenu
+
     menu "Backend"
 
         config ZTGW_BACKEND_URL
