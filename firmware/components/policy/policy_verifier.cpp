@@ -6,51 +6,9 @@
 
 #include <cstring>
 
+#include "utils.h"
+
 namespace zerotrust::policy {
-
-namespace {
-
-// Read uint64_t from big-endian byte array
-inline uint64_t read_u64_be(const uint8_t* data)
-{
-    return (static_cast<uint64_t>(data[0]) << 56) |
-           (static_cast<uint64_t>(data[1]) << 48) |
-           (static_cast<uint64_t>(data[2]) << 40) |
-           (static_cast<uint64_t>(data[3]) << 32) |
-           (static_cast<uint64_t>(data[4]) << 24) |
-           (static_cast<uint64_t>(data[5]) << 16) |
-           (static_cast<uint64_t>(data[6]) << 8) |
-           static_cast<uint64_t>(data[7]);
-}
-
-// Read uint16_t from little-endian byte array
-inline uint16_t read_u16_le(const uint8_t* data)
-{
-    return static_cast<uint16_t>(data[0]) |
-           (static_cast<uint16_t>(data[1]) << 8);
-}
-
-// Constant-time memory comparison (prevents timing attacks)
-bool secure_compare(const uint8_t* a, const uint8_t* b, size_t len)
-{
-    uint8_t diff = 0;
-    for (size_t i = 0; i < len; ++i) {
-        diff |= a[i] ^ b[i];
-    }
-    return diff == 0;
-}
-
-// Secure memory zeroization
-void secure_zero(void* ptr, size_t len)
-{
-    if (!ptr || len == 0) return;
-    volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
-    while (len--) {
-        *p++ = 0;
-    }
-}
-
-} // anonymous namespace
 
 bool PolicyVerifier::split_signed_blob(
     const uint8_t* blob,
@@ -65,7 +23,7 @@ bool PolicyVerifier::split_signed_blob(
     size_t offset = 0;
 
     // Read payload length
-    uint16_t payload_len = read_u16_le(blob + offset);
+    uint16_t payload_len = zerotrust::utils::read_u16_le(blob + offset);
     offset += AuthPolicyFormat::LengthFieldSize;
 
     // Validate payload length bounds
@@ -84,7 +42,7 @@ bool PolicyVerifier::split_signed_blob(
     offset += payload_len;
 
     // Read signature length
-    uint16_t sig_len = read_u16_le(blob + offset);
+    uint16_t sig_len = zerotrust::utils::read_u16_le(blob + offset);
     offset += AuthPolicyFormat::LengthFieldSize;
 
     // Validate signature length bounds
@@ -151,15 +109,15 @@ AuthPolicyParseResult PolicyVerifier::parse(
     offset += AuthPolicyFormat::DeviceIdSize;
 
     // MinFirmwareVersion (big-endian)
-    out.min_firmware_version = read_u64_be(payload + offset);
+    out.min_firmware_version = zerotrust::utils::read_u64_be(payload + offset);
     offset += AuthPolicyFormat::MinFirmwareVersionSize;
 
     // IssuedAt (big-endian)
-    out.issued_at = read_u64_be(payload + offset);
+    out.issued_at = zerotrust::utils::read_u64_be(payload + offset);
     offset += AuthPolicyFormat::TimestampSize;
 
     // ExpiresAt (big-endian)
-    out.expires_at = read_u64_be(payload + offset);
+    out.expires_at = zerotrust::utils::read_u64_be(payload + offset);
     offset += AuthPolicyFormat::TimestampSize;
 
     // HashCount
@@ -239,7 +197,7 @@ AuthPolicyVerifyResult PolicyVerifier::verify_signature(
     } while (false);
 
     mbedtls_pk_free(&pk);
-    secure_zero(hash, sizeof(hash));
+    zerotrust::utils::secure_zero(hash, sizeof(hash));
 
     return result;
 }
@@ -265,7 +223,7 @@ AuthPolicyValidateResult PolicyVerifier::validate(
     }
 
     if (!device_id_is_any) {
-        if (!secure_compare(policy.device_id, device_id, AuthPolicyFormat::DeviceIdSize)) {
+        if (!zerotrust::utils::secure_compare(policy.device_id, device_id, AuthPolicyFormat::DeviceIdSize)) {
             return AuthPolicyValidateResult::DeviceIdMismatch;
         }
     }
@@ -314,7 +272,7 @@ bool PolicyVerifier::is_hash_allowed(
     }
 
     for (uint8_t i = 0; i < policy.hash_count; ++i) {
-        if (secure_compare(policy.allowed_hashes[i], firmware_hash, AuthPolicyFormat::FirmwareHashSize)) {
+        if (zerotrust::utils::secure_compare(policy.allowed_hashes[i], firmware_hash, AuthPolicyFormat::FirmwareHashSize)) {
             return true;
         }
     }

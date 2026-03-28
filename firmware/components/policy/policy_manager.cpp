@@ -9,51 +9,11 @@
 #include <cstring>
 #include <ctime>
 
+#include "utils.h"
+
 namespace zerotrust::policy {
 
 namespace {
-
-// Helper to read uint32_t from little-endian byte array
-inline uint32_t read_u32_le(const uint8_t* data)
-{
-    return static_cast<uint32_t>(data[0]) |
-           (static_cast<uint32_t>(data[1]) << 8) |
-           (static_cast<uint32_t>(data[2]) << 16) |
-           (static_cast<uint32_t>(data[3]) << 24);
-}
-
-// Helper to read uint16_t from little-endian byte array
-inline uint16_t read_u16_le(const uint8_t* data)
-{
-    return static_cast<uint16_t>(data[0]) |
-           (static_cast<uint16_t>(data[1]) << 8);
-}
-
-// Validate enum value: must be < count OR equal to any_value (wildcard)
-inline bool is_valid_or_any(uint8_t value, uint8_t count, uint8_t any_value)
-{
-    return value < count || value == any_value;
-}
-
-// Validate enum value: must be < count (no wildcard allowed)
-inline bool is_valid_enum(uint8_t value, uint8_t count)
-{
-    return value < count;
-}
-
-// Portable secure memory zeroization
-// Uses volatile to prevent compiler from optimizing away the writes
-void secure_zero(void* ptr, size_t len)
-{
-    if (!ptr || len == 0) {
-        return;
-    }
-
-    volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
-    while (len--) {
-        *p++ = 0;
-    }
-}
 
 // Check if policy has expired (internal helper)
 // Returns true if expired, false if still valid or expiration not applicable
@@ -168,7 +128,7 @@ PolicyVerifyResult verify_policy(
     if (mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
                    blob.data, signed_len, hash) != 0) {
         // Zeroize sensitive data before returning
-        secure_zero(backend_pubkey, sizeof(backend_pubkey));
+        zerotrust::utils::secure_zero(backend_pubkey, sizeof(backend_pubkey));
         return PolicyVerifyResult::InternalError;
     }
 
@@ -204,8 +164,8 @@ PolicyVerifyResult verify_policy(
     mbedtls_pk_free(&pk);
 
     // Zeroize ALL sensitive data before returning
-    secure_zero(hash, sizeof(hash));
-    secure_zero(backend_pubkey, sizeof(backend_pubkey));
+    zerotrust::utils::secure_zero(hash, sizeof(hash));
+    zerotrust::utils::secure_zero(backend_pubkey, sizeof(backend_pubkey));
 
     return result;
 }
@@ -301,21 +261,21 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
     const uint8_t* blob_end = blob.data + blob.len;
 
     // Magic
-    uint32_t magic = read_u32_le(blob_ptr);
+    uint32_t magic = zerotrust::utils::read_u32_le(blob_ptr);
     if (magic != ParsedPolicy::Magic) {
         return PolicyParseResult::InvalidMagic;
     }
     blob_ptr += sizeof(uint32_t);
 
     // Format version
-    out.format_version = read_u32_le(blob_ptr);
+    out.format_version = zerotrust::utils::read_u32_le(blob_ptr);
     if (out.format_version != ParsedPolicy::CurrentFormatVersion) {
         return PolicyParseResult::UnsupportedVersion;
     }
     blob_ptr += sizeof(uint32_t);
 
     // Policy version
-    out.policy_version = read_u32_le(blob_ptr);
+    out.policy_version = zerotrust::utils::read_u32_le(blob_ptr);
     if (out.policy_version == 0) {
         return PolicyParseResult::InvalidFormat; // Policy version must be non-zero
     }
@@ -326,7 +286,7 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
     blob_ptr += ParsedPolicy::DeviceIdSize;
 
     // Expires at
-    out.expires_at = read_u32_le(blob_ptr);
+    out.expires_at = zerotrust::utils::read_u32_le(blob_ptr);
     blob_ptr += sizeof(uint32_t);
 
     // Validate expires_at: 0 = no expiry, otherwise must be >= MinValidTimestamp
@@ -335,7 +295,7 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
     }
 
     // Rule count
-    out.rule_count = read_u16_le(blob_ptr);
+    out.rule_count = zerotrust::utils::read_u16_le(blob_ptr);
     blob_ptr += sizeof(uint16_t);
 
     // Validate rule count (must have at least 1 rule)
@@ -355,12 +315,12 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
         // Validate all enum fields before assignment (fail-closed)
         // state, actor, origin, intent support wildcards (0xFF = any)
         // action, decision must be exact valid values
-        if (!is_valid_or_any(blob_ptr[0], static_cast<uint8_t>(system_state::SystemState::_Count), ParsedPolicy::AnyState) ||
-            !is_valid_or_any(blob_ptr[1], static_cast<uint8_t>(PolicyActor::_Count), ParsedPolicy::AnyActor) ||
-            !is_valid_or_any(blob_ptr[2], static_cast<uint8_t>(PolicyOrigin::_Count), ParsedPolicy::AnyOrigin) ||
-            !is_valid_or_any(blob_ptr[3], static_cast<uint8_t>(PolicyIntent::_Count), ParsedPolicy::AnyIntent) ||
-            !is_valid_enum(blob_ptr[4], static_cast<uint8_t>(PolicyAction::_Count)) ||
-            !is_valid_enum(blob_ptr[5], static_cast<uint8_t>(PolicyDecision::_Count))) {
+        if (!zerotrust::utils::is_valid_or_any(blob_ptr[0], static_cast<uint8_t>(system_state::SystemState::_Count), ParsedPolicy::AnyState) ||
+            !zerotrust::utils::is_valid_or_any(blob_ptr[1], static_cast<uint8_t>(PolicyActor::_Count), ParsedPolicy::AnyActor) ||
+            !zerotrust::utils::is_valid_or_any(blob_ptr[2], static_cast<uint8_t>(PolicyOrigin::_Count), ParsedPolicy::AnyOrigin) ||
+            !zerotrust::utils::is_valid_or_any(blob_ptr[3], static_cast<uint8_t>(PolicyIntent::_Count), ParsedPolicy::AnyIntent) ||
+            !zerotrust::utils::is_valid_enum(blob_ptr[4], static_cast<uint8_t>(PolicyAction::_Count)) ||
+            !zerotrust::utils::is_valid_enum(blob_ptr[5], static_cast<uint8_t>(PolicyDecision::_Count))) {
             return PolicyParseResult::InvalidFormat;
         }
 
@@ -379,7 +339,7 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
     if (blob_ptr + sizeof(uint16_t) > blob_end) {
         return PolicyParseResult::SignatureError;
     }
-    uint16_t sig_len = read_u16_le(blob_ptr);
+    uint16_t sig_len = zerotrust::utils::read_u16_le(blob_ptr);
     blob_ptr += sizeof(uint16_t);
 
     // Validate signature length
@@ -546,7 +506,7 @@ void PolicyManager::clear_policy()
     policy_version_ = 0;
 
     // Secure-zero parsed policy before clearing (may contain sensitive rule data)
-    secure_zero(&parsed_policy_, sizeof(parsed_policy_));
+    zerotrust::utils::secure_zero(&parsed_policy_, sizeof(parsed_policy_));
     parsed_policy_ = ParsedPolicy{};
 
     // Clear policy from NVS

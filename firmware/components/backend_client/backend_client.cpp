@@ -7,6 +7,8 @@
 #include <cstring>
 #include <cstdio>
 
+#include "utils.h"
+
 namespace zerotrust::backend {
 
 namespace {
@@ -73,32 +75,6 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt)
     return ESP_OK;
 }
 
-// Convert hex string to bytes
-bool hex_to_bytes(const char* hex, size_t hex_len, uint8_t* out, size_t out_capacity)
-{
-    if (hex_len % 2 != 0) return false;
-    size_t byte_len = hex_len / 2;
-    if (byte_len > out_capacity) return false;
-    
-    for (size_t i = 0; i < byte_len; i++) {
-        unsigned int byte_val;
-        if (sscanf(hex + (i * 2), "%2x", &byte_val) != 1) {
-            return false;
-        }
-        out[i] = static_cast<uint8_t>(byte_val);
-    }
-    return true;
-}
-
-// Convert bytes to hex string
-void bytes_to_hex(const uint8_t* bytes, size_t len, char* out)
-{
-    for (size_t i = 0; i < len; i++) {
-        sprintf(out + (i * 2), "%02x", bytes[i]);
-    }
-    out[len * 2] = '\0';
-}
-
 } // anonymous namespace
 
 void BackendClient::init(const BackendConfig& config)
@@ -129,7 +105,7 @@ BackendStatus BackendClient::request_attestation_challenge(
 
     // Build JSON body: {"device_id":"<hex>"}
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1]; // +1 for null terminator
-    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex); 
+    zerotrust::utils::bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex); 
     char json_body[BackendClient::AttestationChallengeReqJsonBodyBufferSize];
     snprintf(json_body, BackendClient::AttestationChallengeReqJsonBodyBufferSize,
              "{\"device_id\":\"%s\"}", device_id_hex);
@@ -207,7 +183,7 @@ BackendStatus BackendClient::request_attestation_challenge(
         return BackendStatus::InvalidResponse;
     }
 
-    if (!hex_to_bytes(nonce_hex, nonce_hex_len, out_response.nonce, BackendClient::NonceSize)) {
+    if (!zerotrust::utils::hex_to_bytes(nonce_hex, nonce_hex_len, out_response.nonce, BackendClient::NonceSize)) {
         cJSON_Delete(root);
         return BackendStatus::InvalidResponse;
     }
@@ -234,13 +210,13 @@ BackendStatus BackendClient::verify_attestation(const attestation::AttestationRe
 
     // Encode binary fields as hex strings
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
-    bytes_to_hex(response.device_id, BackendClient::DeviceIdSize, device_id_hex);
+    zerotrust::utils::bytes_to_hex(response.device_id, BackendClient::DeviceIdSize, device_id_hex);
 
     char firmware_hash_hex[BackendClient::FirmwareHashSize * 2 + 1];
-    bytes_to_hex(response.firmware_hash, BackendClient::FirmwareHashSize, firmware_hash_hex);
+    zerotrust::utils::bytes_to_hex(response.firmware_hash, BackendClient::FirmwareHashSize, firmware_hash_hex);
 
     char signature_hex[BackendClient::MaxSignatureSize * 2 + 1];
-    bytes_to_hex(response.signature, response.signature_len, signature_hex);
+    zerotrust::utils::bytes_to_hex(response.signature, response.signature_len, signature_hex);
 
     // Build JSON body: {"device_id":"<hex>","firmware_hash":"<hex>","signature":"<hex>"}
     char json_body[BackendClient::AttestationVerifyJsonBodyBufferSize];
@@ -333,10 +309,10 @@ BackendStatus BackendClient::register_device(
              config_.base_url, BackendClient::EndpointDeviceRegister);
 
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
-    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+    zerotrust::utils::bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
 
     char public_key_hex[BackendClient::PublicKeyDerMax * 2 + 1];
-    bytes_to_hex(public_key_der, public_key_len, public_key_hex);
+    zerotrust::utils::bytes_to_hex(public_key_der, public_key_len, public_key_hex);
 
     char json_body[BackendClient::RegisterDeviceJsonBodyBufferSize];
     snprintf(json_body, BackendClient::RegisterDeviceJsonBodyBufferSize,
@@ -413,10 +389,10 @@ BackendStatus BackendClient::request_authorization(
              config_.base_url, BackendClient::EndpointAuthorizationRequest);
 
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
-    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+    zerotrust::utils::bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
 
     char firmware_hash_hex[BackendClient::FirmwareHashSize * 2 + 1];
-    bytes_to_hex(firmware_hash, BackendClient::FirmwareHashSize, firmware_hash_hex);
+    zerotrust::utils::bytes_to_hex(firmware_hash, BackendClient::FirmwareHashSize, firmware_hash_hex);
 
     char json_body[BackendClient::AuthorizationRequestJsonBodyBufferSize];
     snprintf(json_body, BackendClient::AuthorizationRequestJsonBodyBufferSize,
@@ -497,7 +473,7 @@ BackendStatus BackendClient::request_authorization(
 
         if (hex_len == 0 || (hex_len % 2) != 0 ||
             (hex_len / 2) > BackendClient::PolicyBlobMaxSize ||
-            !hex_to_bytes(policy_hex, hex_len,
+            !zerotrust::utils::hex_to_bytes(policy_hex, hex_len,
                           out_response.policy_blob,
                           BackendClient::PolicyBlobMaxSize)) {
             cJSON_Delete(root);
@@ -532,7 +508,7 @@ BackendStatus BackendClient::request_runtime_policy(
              config_.base_url, BackendClient::EndpointPolicyIssue);
 
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
-    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+    zerotrust::utils::bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
 
     char json_body[BackendClient::PolicyIssueJsonBodyBufferSize];
     snprintf(json_body, BackendClient::PolicyIssueJsonBodyBufferSize,
@@ -603,7 +579,7 @@ BackendStatus BackendClient::request_runtime_policy(
 
     if (hex_len == 0 || (hex_len % 2) != 0 ||
         (hex_len / 2) > BackendClient::RuntimePolicyBlobMaxSize ||
-        !hex_to_bytes(policy_hex, hex_len,
+        !zerotrust::utils::hex_to_bytes(policy_hex, hex_len,
                       out_response.policy_blob,
                       BackendClient::RuntimePolicyBlobMaxSize)) {
         cJSON_Delete(root);
@@ -637,7 +613,7 @@ BackendStatus BackendClient::send_audit_records(
              config_.base_url, BackendClient::EndpointAuditIngest);
 
     char device_id_hex[BackendClient::DeviceIdSize * 2 + 1];
-    bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
+    zerotrust::utils::bytes_to_hex(device_id, BackendClient::DeviceIdSize, device_id_hex);
 
     cJSON* root = cJSON_CreateObject();
     if (!root) {
