@@ -23,13 +23,13 @@ const (
 // memoryService is an in-memory attestation challenge store.
 // It is NOT persistent and is intended only for initial backend bring-up.
 type memoryService struct {
-	mu                sync.Mutex
+	mu                sync.RWMutex
 	challenges        map[string]Challenge
 	registry          PublicKeyRegistry
 	firmwareWhitelist map[[FirmwareHashSize]byte]struct{}
 }
 
-func NewMemoryService(registry PublicKeyRegistry) *memoryService {
+func NewMemoryService(registry PublicKeyRegistry) Service {
 	return &memoryService{
 		challenges:        make(map[string]Challenge),
 		registry:          registry,
@@ -154,9 +154,9 @@ func (s *memoryService) isFirmwareAllowed(firmwareHash []byte) bool {
 	var key [FirmwareHashSize]byte
 	copy(key[:], firmwareHash)
 
-	s.mu.Lock()
+	s.mu.RLock()
 	_, allowed := s.firmwareWhitelist[key]
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
 	return allowed
 }

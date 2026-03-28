@@ -1,6 +1,7 @@
 package attestation
 
 import (
+	"context"
 	"errors"
 	"sync"
 )
@@ -13,13 +14,13 @@ type memoryRegistry struct {
 	keys map[string][]byte // DER-encoded SPKI public keys
 }
 
-func NewMemoryRegistry() *memoryRegistry {
+func NewMemoryRegistry() PublicKeyRegistry {
 	return &memoryRegistry{
 		keys: make(map[string][]byte),
 	}
 }
 
-func (r *memoryRegistry) Lookup(deviceID string) ([]byte, error) {
+func (r *memoryRegistry) Lookup(_ context.Context, deviceID string) ([]byte, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -30,7 +31,7 @@ func (r *memoryRegistry) Lookup(deviceID string) ([]byte, error) {
 	return key, nil
 }
 
-func (r *memoryRegistry) Register(deviceID string, pubKeyDER []byte) error {
+func (r *memoryRegistry) Register(_ context.Context, deviceID string, pubKeyDER []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

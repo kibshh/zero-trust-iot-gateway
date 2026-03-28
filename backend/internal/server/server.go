@@ -13,6 +13,9 @@ import (
 	"github.com/kibshh/zero-trust-iot-gateway/backend/internal/policy"
 )
 
+// ShutdownTimeout is the maximum time to wait for in-flight requests during graceful shutdown
+const ShutdownTimeout = 10 * time.Second
+
 // Server represents the HTTP server for the zero-trust IoT gateway backend
 type Server struct {
 	httpServer *http.Server
@@ -50,8 +53,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// New creates a new server instance
-func New(
+// NewServer creates a new server instance
+func NewServer(
 	cfg Config,
 	attestationSvc attestation.Service,
 	authorizer *device.Authorizer,
@@ -104,7 +107,7 @@ func (s *Server) Start(ctx context.Context) error {
 	case <-ctx.Done():
 		log.Println("Shutting down server...")
 		// Create shutdown context with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
 		defer cancel()
 
 		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {

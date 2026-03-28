@@ -42,7 +42,7 @@ func (s *Server) handleDeviceOperations(w http.ResponseWriter, r *http.Request) 
 }
 
 func handleDeviceGet(s *Server, w http.ResponseWriter, r *http.Request, id string) {
-	dev, err := s.deviceStore.Load(r.Context(), id)
+	dev, err := s.deviceSvc.Get(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, device.ErrDeviceNotFound) {
 			http.Error(w, "device not found", http.StatusNotFound)
@@ -64,23 +64,16 @@ func handleDeviceGet(s *Server, w http.ResponseWriter, r *http.Request, id strin
 }
 
 func handleDeviceDelete(s *Server, w http.ResponseWriter, r *http.Request, id string) {
-	dev, err := s.deviceStore.Load(r.Context(), id)
+	err := s.deviceSvc.Revoke(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, device.ErrDeviceNotFound) {
 			http.Error(w, "device not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "failed to load device", http.StatusInternalServerError)
-		return
-	}
-
-	if dev.Status == device.StatusRevoked {
-		http.Error(w, "device already revoked", http.StatusConflict)
-		return
-	}
-
-	dev.Status = device.StatusRevoked
-	if err := s.deviceStore.Save(r.Context(), dev); err != nil {
+		if errors.Is(err, device.ErrDeviceAlreadyRevoked) {
+			http.Error(w, "device already revoked", http.StatusConflict)
+			return
+		}
 		http.Error(w, "revocation failed", http.StatusInternalServerError)
 		return
 	}

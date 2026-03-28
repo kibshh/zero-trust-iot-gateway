@@ -107,7 +107,7 @@ func run(ctx context.Context) error {
 		AuditMaxRecordsPerRequest: cfg.AuditMaxRecordsPerRequest,
 		AuditMaxBodyBytes:         cfg.AuditMaxBodyBytes,
 	}
-	srv := server.New(
+	srv := server.NewServer(
 		srvCfg,
 		attestationSvc,
 		authorizer,

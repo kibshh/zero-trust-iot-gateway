@@ -6,7 +6,7 @@ import (
 )
 
 type memoryVersionStore struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	versions map[string]uint32
 }
 
