@@ -18,7 +18,8 @@ enum class BackendStatus : uint8_t {
     NetworkError,
     Timeout,
     ServerError,
-    InvalidResponse
+    InvalidResponse,
+    _Count              // Number of statuses (for validation)
 };
 
 enum class HttpStatusCode : int {
@@ -29,7 +30,8 @@ enum class HttpStatusCode : int {
     Forbidden = 403,
     NotFound = 404,
     Conflict = 409,
-    InternalServerError = 500
+    InternalServerError = 500,
+    _Count              // Sentinel (non-contiguous values - use for presence, not bounds)
 };
 
 struct BackendConfig {
@@ -204,5 +206,5 @@ bool load_config(BackendConfigStore& out);
 
 } // namespace zerotrust::backend
 
-#endif
+#endif // FIRMWARE_COMPONENTS_BACKEND_CLIENT_INCLUDE_BACKEND_CLIENT_H
 

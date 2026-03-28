@@ -1,13 +1,13 @@
 // TODO: Migrate printf to ESP_LOGx (ESP_LOGI, ESP_LOGW, ESP_LOGE) project-wide
 //       for log-level filtering, compile-time stripping, and timestamps
 
-#include <cstdio>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+
+#include <cstdio>
 
 #include "wifi_manager.h"
 #include "provisioning.h"

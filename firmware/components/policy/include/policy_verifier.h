@@ -69,6 +69,7 @@ enum class AuthPolicyParseResult : uint8_t {
     UnsupportedVersion,
     TooManyHashes,
     PayloadSizeMismatch,
+    _Count              // Number of results (for validation)
 };
 
 // Result of signature verification
@@ -77,6 +78,7 @@ enum class AuthPolicyVerifyResult : uint8_t {
     InvalidSignature,
     InvalidPublicKey,
     CryptoError,
+    _Count              // Number of results (for validation)
 };
 
 // Result of policy validation (business logic)
@@ -88,6 +90,7 @@ enum class AuthPolicyValidateResult : uint8_t {
     FirmwareVersionTooOld,
     FirmwareHashNotAllowed,
     ClockNotSet,
+    _Count              // Number of results (for validation)
 };
 
 // Signed authorization policy (payload + signature)

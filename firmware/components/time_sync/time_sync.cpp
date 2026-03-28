@@ -3,9 +3,9 @@
 #include "esp_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <sys/time.h>
 
 #include <ctime>
-#include <sys/time.h>
 
 namespace zerotrust::time_sync {
 

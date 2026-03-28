@@ -9,7 +9,8 @@ enum class TimeSyncStatus : uint8_t {
     NotStarted,      // SNTP not initialized
     InProgress,      // Waiting for NTP response
     Synchronized,    // Time is synchronized
-    Failed           // Synchronization failed
+    Failed,          // Synchronization failed
+    _Count           // Number of statuses (for validation)
 };
 
 struct TimeSyncConfig {

@@ -1,12 +1,31 @@
 #include "identity.h"
 
-#include <cstring>
 #include "nvs.h"
 #include "esp_random.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/ecp.h"
 #include "mbedtls/ctr_drbg.h"
 #include "mbedtls/entropy.h"
+
+#include <cstring>
+
+namespace {
+
+// Portable secure memory zeroization
+// Uses volatile to prevent compiler from optimizing away the writes
+void secure_zero(void* ptr, size_t len)
+{
+    if (!ptr || len == 0) {
+        return;
+    }
+
+    volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
+} // anonymous namespace
 
 namespace zerotrust::identity {
 
@@ -419,7 +438,7 @@ bool IdentityManager::sign(const uint8_t* data, size_t datalen, uint8_t* sig, si
 
     // Zero out private key buffer to prevent memory leaks of sensitive data
     // Critical security practice - private key material must be cleared
-    memset(priv_buf, 0, sizeof(priv_buf));
+    secure_zero(priv_buf, sizeof(priv_buf));
 
     return success;
 }

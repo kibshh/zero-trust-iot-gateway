@@ -9,18 +9,21 @@ namespace zerotrust::identity {
 enum class IdentityStatus : uint8_t {
     NotPresent,     // No identity stored
     Present,        // Identity exists locally
-    Corrupted       // Identity data invalid / unreadable
+    Corrupted,      // Identity data invalid / unreadable
+    _Count          // Number of statuses (for validation)
 };
 
 enum class KeyStatus : uint8_t {
     NotPresent,     // No key material stored
     Present,        // Key material exists
-    Corrupted       // Key material unreadable / invalid
+    Corrupted,      // Key material unreadable / invalid
+    _Count          // Number of statuses (for validation)
 };
 
 enum class KeyAlgorithm : uint8_t {
     None = 0,
     ECDSA_P256 = 1,
+    _Count          // Number of algorithms (for validation)
 };
 
 // Metadata about NVS keys

@@ -43,7 +43,8 @@ enum class SystemEvent : uint8_t {
     FactoryReset,           // Physical / authenticated factory reset
     // Available for all states
     ManualLock,             // Explicit lock command (admin / backend)
-    RevocationReceived      // Permanent backend revocation (no recovery)
+    RevocationReceived,     // Permanent backend revocation (no recovery)
+    _Count                  // Number of events (for validation)
 };
 
 

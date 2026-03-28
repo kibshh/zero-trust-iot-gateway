@@ -12,7 +12,8 @@ enum class AttestationStatus : uint8_t {
     Ok,
     IdentityMissing,
     KeyMissing,
-    InternalError
+    InternalError,
+    _Count              // Number of statuses (for validation)
 };
 
 // Input from backend in form of Nonce (Random number used ONCE)
@@ -72,5 +73,5 @@ private:
 
 } // namespace zerotrust::attestation
 
-#endif
+#endif // FIRMWARE_COMPONENTS_ATTESTATION_INCLUDE_ATTESTATION_H
 

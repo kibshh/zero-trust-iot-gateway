@@ -1,13 +1,13 @@
 #include "wifi_manager.h"
 
-#include <cstring>
-#include <cstdio>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "nvs.h"
+
+#include <cstring>
+#include <cstdio>
 
 namespace zerotrust::wifi {
 

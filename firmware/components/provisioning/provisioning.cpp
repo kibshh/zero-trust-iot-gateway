@@ -1,9 +1,5 @@
 #include "provisioning.h"
 
-#include <cstring>
-#include <cstdio>
-#include <cstdlib>
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_wifi.h"
@@ -12,6 +8,10 @@
 #include "nvs.h"
 #include "driver/gpio.h"
 #include "esp_system.h"
+
+#include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 namespace zerotrust::provisioning {
 

@@ -81,6 +81,7 @@ enum class PolicyLoadResult : uint8_t {
     Ok,                 // Policy verified, persisted and activated
     TransientError,     // Network / timing / partial delivery issue (retry allowed)
     SecurityViolation,  // Invalid signature, rollback attempt, device mismatch (lock)
+    _Count              // Number of results (for validation)
 };
 
 // Context for policy evaluation
@@ -98,7 +99,8 @@ struct PolicyContext {
 // Source of policy decision
 enum class PolicyDecisionSource : uint8_t {
     Policy,     // Decision from loaded policy rules
-    Baseline    // Decision from baseline PolicyEngine
+    Baseline,   // Decision from baseline PolicyEngine
+    _Count      // Number of sources (for validation)
 };
 
 // Audit record for policy enforcement
@@ -176,6 +178,7 @@ enum class PolicyParseResult : uint8_t {
     RuleLimitExceeded,   // rule_count == 0 or > MaxRules
     InvalidFormat,       // Malformed data (bad enum values, etc.)
     SignatureError,      // Signature missing or too large
+    _Count               // Number of results (for validation)
 };
 
 // Result of policy signature verification
@@ -183,7 +186,8 @@ enum class PolicyVerifyResult : uint8_t {
     Ok,
     InvalidSignature,    // Signature verification failed
     InvalidKey,          // Backend public key missing or invalid
-    InternalError        // Crypto operation failed
+    InternalError,       // Crypto operation failed
+    _Count               // Number of results (for validation)
 };
 
 } // namespace zerotrust::policy

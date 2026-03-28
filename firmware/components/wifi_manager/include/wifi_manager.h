@@ -13,10 +13,11 @@ struct WifiConfig;
 // Connection outcome returned by WiFiManager::connect()
 enum class ConnectResult : uint8_t {
     Connected,      // IP address obtained successfully
-    NoCredentials,  // SSID is empty — provisioning mode required
+    NoCredentials,  // SSID is empty - provisioning mode required
     AuthFailed,     // Wrong password or AP rejected association
     Timeout,        // connect_timeout_ms elapsed before IP was assigned
     DriverError,    // esp_wifi_* or netif API returned an error
+    _Count          // Number of results (for validation)
 };
 
 // WiFiManager owns the Wi-Fi driver, the default STA netif, and its event
@@ -83,4 +84,4 @@ bool load_config(WifiConfig& out);
 
 } // namespace zerotrust::wifi
 
-#endif
+#endif // FIRMWARE_COMPONENTS_WIFI_MANAGER_INCLUDE_WIFI_MANAGER_H
