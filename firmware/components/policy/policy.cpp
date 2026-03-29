@@ -5,8 +5,8 @@ namespace zerotrust::policy {
 void PolicyEngine::audit(const PolicyAuditRecord& record)
 {
     audit_buffer_[audit_head_] = record;
-    audit_head_ = (audit_head_ + 1) % AuditBufferSize;
-    if (audit_count_ < AuditBufferSize) {
+    audit_head_ = (audit_head_ + 1) % PolicyEngine::AuditBufferSize;
+    if (audit_count_ < PolicyEngine::AuditBufferSize) {
         ++audit_count_;
     }
 }
@@ -19,8 +19,8 @@ const PolicyAuditRecord* PolicyEngine::get_audit_record(size_t index) const
 
     // Calculate actual position in circular buffer
     // oldest record is at (head - count) mod size
-    size_t oldest_pos = (audit_head_ + AuditBufferSize - audit_count_) % AuditBufferSize;
-    size_t actual_pos = (oldest_pos + index) % AuditBufferSize;
+    size_t oldest_pos = (audit_head_ + PolicyEngine::AuditBufferSize - audit_count_) % PolicyEngine::AuditBufferSize;
+    size_t actual_pos = (oldest_pos + index) % PolicyEngine::AuditBufferSize;
     return &audit_buffer_[actual_pos];
 }
 
