@@ -36,9 +36,41 @@ constexpr uint32_t MainLoopIntervalMs = 1000;
 
 // Operational main loop intervals (in ticks, each tick = MainLoopIntervalMs)
 struct OperationalIntervals {
-    static constexpr uint32_t ReAttestTicks      = 3600;  // Re-attest every 1 hour
-    static constexpr uint32_t PolicyRefreshTicks = 300;   // Check policy refresh every 5 minutes
-    static constexpr uint32_t AuditFlushTicks    = 300;   // Flush audit records every 5 minutes
+    static constexpr uint32_t ReAttestTicks       = 3600;  // Re-attest every 1 hour
+    static constexpr uint32_t PolicyRefreshTicks  = 300;   // Check policy refresh every 5 minutes
+    static constexpr uint32_t AuditFlushTicks     = 300;   // Flush audit records every 5 minutes
+    static constexpr uint32_t BackoffMultiplier   = 2;     // Double interval on failure
+    static constexpr uint32_t MaxBackoffFactor    = 4;     // Cap at 4x base interval
+};
+
+// Per-operation backoff state for periodic tasks.
+// On success the interval resets to base; on failure it doubles up to max.
+struct PeriodicTaskState {
+    uint32_t last_tick;
+    uint32_t interval;       // Current interval (increases on failure)
+    uint32_t base_interval;  // Normal interval (reset target on success)
+
+    bool is_due(uint32_t tick) const
+    {
+        return is_interval_elapsed(tick, last_tick, interval);
+    }
+
+    void on_success(uint32_t tick)
+    {
+        last_tick = tick;
+        interval = base_interval;
+    }
+
+    void on_failure(uint32_t tick)
+    {
+        last_tick = tick;
+        uint32_t next = interval * OperationalIntervals::BackoffMultiplier;
+        uint32_t cap  = base_interval * OperationalIntervals::MaxBackoffFactor;
+        if (next > cap) {
+            next = cap;
+        }
+        interval = next;
+    }
 };
 
 // Elapsed-since-last-run check that handles uint32_t wrap-around correctly.
@@ -271,31 +303,42 @@ extern "C" void app_main(void)
     if (boot_ok) {
         printf("[BOOT] Boot sequence complete — device is Operational\n");
 
-        uint32_t tick              = 0;
-        uint32_t last_audit_tick   = 0;
-        uint32_t last_refresh_tick = 0;
-        uint32_t last_attest_tick  = 0;
+        PeriodicTaskState attest_state  = {0, OperationalIntervals::ReAttestTicks,
+                                              OperationalIntervals::ReAttestTicks};
+        PeriodicTaskState refresh_state = {0, OperationalIntervals::PolicyRefreshTicks,
+                                              OperationalIntervals::PolicyRefreshTicks};
+        PeriodicTaskState audit_state   = {0, OperationalIntervals::AuditFlushTicks,
+                                              OperationalIntervals::AuditFlushTicks};
+
+        uint32_t tick = 0;
 
         while (!is_terminal_state(fsm.get_state())) {
             controller.on_periodic_tick();
 
-            // TODO: Use retvals (try_flush_audit, try_refresh_policy, try_re_attest_periodic)
-            // for per-operation backoff and structured logging
-            if (is_interval_elapsed(tick, last_audit_tick, OperationalIntervals::AuditFlushTicks)) {
-                controller.try_flush_audit();
-                last_audit_tick = tick;
-            }
-
-            // Policy refresh (only requests new policy when nearing expiration)
-            if (is_interval_elapsed(tick, last_refresh_tick, OperationalIntervals::PolicyRefreshTicks)) {
-                controller.try_refresh_policy();
-                last_refresh_tick = tick;
-            }
-
-            // Periodic re-attestation
-            if (is_interval_elapsed(tick, last_attest_tick, OperationalIntervals::ReAttestTicks)) {
-                controller.try_re_attest_periodic();
-                last_attest_tick = tick;
+            // Single-flight: execute at most one periodic backend operation per tick.
+            // Priority: re-attestation > policy refresh > audit flush.
+            // Prevents overlapping backend calls from producing confusing
+            // connectivity state transitions within a single tick.
+            // Each operation backs off independently on failure (doubles interval,
+            // capped at 4x base) and resets to base interval on success.
+            if (attest_state.is_due(tick)) {
+                if (controller.try_re_attest_periodic()) {
+                    attest_state.on_success(tick);
+                } else {
+                    attest_state.on_failure(tick);
+                }
+            } else if (refresh_state.is_due(tick)) {
+                if (controller.try_refresh_policy()) {
+                    refresh_state.on_success(tick);
+                } else {
+                    refresh_state.on_failure(tick);
+                }
+            } else if (audit_state.is_due(tick)) {
+                if (controller.try_flush_audit()) {
+                    audit_state.on_success(tick);
+                } else {
+                    audit_state.on_failure(tick);
+                }
             }
 
             ++tick;
