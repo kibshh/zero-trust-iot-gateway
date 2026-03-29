@@ -19,6 +19,11 @@ namespace zerotrust::system_controller {
 // Owns no resources, only coordinates subsystems, thats why it uses references
 class SystemController {
 public:
+    // Number of consecutive network-layer failures (Timeout/NetworkError) across
+    // periodic backend operations before BackendUnavailable is fired (Operational -> Degraded).
+    // Application-layer responses (Denied, InvalidResponse) are not counted - backend is reachable.
+    static constexpr uint8_t ConsecutiveFailureThreshold = 3;
+
     SystemController(system_state::SystemStateMachine& fsm,
                      identity::IdentityManager& identity,
                      attestation::AttestationEngine& attestation,
@@ -95,17 +100,31 @@ public:
     // Check if time is synchronized
     bool is_time_synchronized() const;
 
+    // Returns true if the device currently considers the backend reachable.
+    // Callers must use this to populate PolicyContext.backend_connected.
+    // Reflects FSM state: false only while in Degraded (entered via BackendUnavailable).
+    bool is_backend_connected() const;
+
 private:
     // Handle policy decision outcome
     // Triggers PolicyViolation event if policy explicitly denies action
     void on_policy_decision(policy::PolicyDecision decision,
                             policy::PolicyDecisionSource source);
+
+    // Record the result of a backend network operation for connectivity tracking.
+    // Timeout/NetworkError increment the consecutive failure counter.
+    // Any other status (including Ok, Denied) resets it - backend responded.
+    // Fires BackendUnavailable when threshold is reached (Operational -> Degraded).
+    // Fires BackendAvailable on recovery (Degraded -> Operational).
+    void record_backend_result(backend::BackendStatus status);
+
     system_state::SystemStateMachine& fsm_;
     identity::IdentityManager& identity_;
     attestation::AttestationEngine& attestation_;
     policy::PolicyManager& policy_mgr_;
     backend::BackendClient& backend_client_;
     policy::PolicyVerifier policy_verifier_;  // Reusable verifier instance
+    uint8_t connectivity_failures_;           // Consecutive network-layer failure counter
 };
 
 } // namespace zerotrust::system_controller

@@ -30,7 +30,8 @@ SystemController::SystemController(system_state::SystemStateMachine& fsm,
       identity_(identity),
       attestation_(attestation),
       policy_mgr_(policy_mgr),
-      backend_client_(backend_client) {}
+      backend_client_(backend_client),
+      connectivity_failures_(0) {}
 
 void SystemController::on_boot()
 {
@@ -206,6 +207,10 @@ policy::PolicyDecision SystemController::authorize_action(
     policy::PolicyAction action,
     const policy::PolicyContext& ctx)
 {
+    // Callers must set ctx.backend_connected = is_backend_connected().
+    // In Degraded state this is false, which the policy rules can use to restrict
+    // network-facing actions. The cached policy (loaded from NVS) remains active
+    // until it expires; on expiry in Degraded the FSM transitions to Locked.
     policy::PolicyDecision decision = policy_mgr_.evaluate(action, ctx);
 
     // Get the engine that made the decision to retrieve audit record
@@ -481,6 +486,7 @@ bool SystemController::try_re_attest_periodic()
 
     // Step 5: Process verification result
     // Denied = lock (runtime, firmware already running — denial means compromise)
+    record_backend_result(status);
     switch (status) {
         case backend::BackendStatus::Ok:
             return true;
@@ -531,6 +537,8 @@ bool SystemController::try_refresh_policy()
     backend::BackendStatus status = backend_client_.request_runtime_policy(
         device_id, sizeof(device_id), policy_resp);
 
+    record_backend_result(status);
+
     if (status != backend::BackendStatus::Ok || policy_resp.policy_blob_len == 0) {
         // Transient failure — old policy still valid
         return false;
@@ -578,6 +586,8 @@ bool SystemController::try_flush_audit()
 
     backend::BackendStatus status = backend_client_.send_audit_records(
         device_id, sizeof(device_id), records, count);
+
+    record_backend_result(status);
 
     if (status == backend::BackendStatus::Ok) {
         // Only clear after successful send to avoid losing records
@@ -639,6 +649,34 @@ bool SystemController::try_load_runtime_policy()
 
     // Step 5: Check if we reached Operational
     return fsm_.get_state() == system_state::SystemState::Operational;
+}
+
+bool SystemController::is_backend_connected() const
+{
+    return fsm_.get_state() != system_state::SystemState::Degraded;
+}
+
+void SystemController::record_backend_result(backend::BackendStatus status)
+{
+    bool is_network_error = (status == backend::BackendStatus::Timeout ||
+                             status == backend::BackendStatus::NetworkError);
+
+    if (is_network_error) {
+        // Cap at threshold to avoid overflow on sustained outage
+        if (connectivity_failures_ < ConsecutiveFailureThreshold) {
+            ++connectivity_failures_;
+        }
+        if (connectivity_failures_ >= ConsecutiveFailureThreshold &&
+            fsm_.get_state() == system_state::SystemState::Operational) {
+            process_event_or_lock(fsm_, system_state::SystemEvent::BackendUnavailable);
+        }
+    } else {
+        // Backend responded (Ok, Denied, InvalidResponse, etc.) - it is reachable
+        connectivity_failures_ = 0;
+        if (fsm_.get_state() == system_state::SystemState::Degraded) {
+            process_event_or_lock(fsm_, system_state::SystemEvent::BackendAvailable);
+        }
+    }
 }
 
 bool SystemController::init_time_sync(const time_sync::TimeSyncConfig* config,

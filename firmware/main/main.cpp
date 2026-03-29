@@ -280,7 +280,7 @@ extern "C" void app_main(void)
             controller.on_periodic_tick();
 
             // TODO: Use retvals (try_flush_audit, try_refresh_policy, try_re_attest_periodic)
-            // for backoff, logging, or Degraded transition
+            // for per-operation backoff and structured logging
             if (is_interval_elapsed(tick, last_audit_tick, OperationalIntervals::AuditFlushTicks)) {
                 controller.try_flush_audit();
                 last_audit_tick = tick;
