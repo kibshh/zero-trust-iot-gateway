@@ -22,7 +22,7 @@ public:
     static constexpr const char* NvsKeyBackendPubKey = "backend_pk";
 
     // Size limits (not strict, used for bounds checking)
-    static constexpr size_t MaxPolicyBlobSize = 2048;
+    static constexpr size_t MaxPolicyBlobSize = 4096;
     static constexpr size_t MinPolicyBlobSize = 64;
     static constexpr size_t MaxBackendPubKeySize = 256;
     // Maximum audit records collectible from both engines
@@ -62,7 +62,8 @@ public:
     PolicyLoadResult load_policy(const PolicyBlob& policy_blob);
 
     // Evaluate action using active policy
-    PolicyDecision evaluate(PolicyAction action, const PolicyContext& ctx) const;
+    PolicyDecision evaluate(PolicyAction action, const PolicyContext& ctx,
+                            AuditReason reason = AuditReason::None) const;
 
     // Remove policy from memory and NVS (factory reset / revocation)
     void clear_policy();

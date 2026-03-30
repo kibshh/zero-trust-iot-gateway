@@ -642,6 +642,8 @@ BackendStatus BackendClient::send_audit_records(
         cJSON_AddNumberToObject(rec, BackendClient::JsonKeyIntent, static_cast<uint8_t>(records[i].intent));
         cJSON_AddNumberToObject(rec, BackendClient::JsonKeyState, static_cast<uint8_t>(records[i].state));
         cJSON_AddNumberToObject(rec, BackendClient::JsonKeySource, static_cast<uint8_t>(records[i].source));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyReason, static_cast<uint8_t>(records[i].reason));
+        cJSON_AddNumberToObject(rec, BackendClient::JsonKeyResource, records[i].resource_id);
         cJSON_AddItemToArray(records_arr, rec);
     }
 

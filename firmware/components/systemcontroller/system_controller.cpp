@@ -205,13 +205,14 @@ void SystemController::on_periodic_tick()
 
 policy::PolicyDecision SystemController::authorize_action(
     policy::PolicyAction action,
-    const policy::PolicyContext& ctx)
+    const policy::PolicyContext& ctx,
+    policy::AuditReason reason)
 {
     // Callers must set ctx.backend_connected = is_backend_connected().
     // In Degraded state this is false, which the policy rules can use to restrict
     // network-facing actions. The cached policy (loaded from NVS) remains active
     // until it expires; on expiry in Degraded the FSM transitions to Locked.
-    policy::PolicyDecision decision = policy_mgr_.evaluate(action, ctx);
+    policy::PolicyDecision decision = policy_mgr_.evaluate(action, ctx, reason);
 
     // Get the engine that made the decision to retrieve audit record
     const policy::PolicyEngine& engine =

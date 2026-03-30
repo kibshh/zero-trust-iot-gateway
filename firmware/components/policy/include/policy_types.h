@@ -76,6 +76,20 @@ enum class PolicyDecision : uint8_t {
     _Count              // Number of decisions (for validation)
 };
 
+// Optional reason attached to audit records.
+// Describes why an action was attempted, without leaking payload data.
+// Callers set this when gating driver operations via ActionGate.
+enum class AuditReason : uint8_t {
+    None,               // Not specified (default for internal/system operations)
+    PeriodicRead,       // Scheduled periodic sensor or GPIO read
+    UserTriggered,      // Physical user interaction (button, knob, switch)
+    BackendCommand,     // Action initiated by authenticated backend command
+    AutoResponse,       // Automatic safety or control-loop response
+    Diagnostics,        // System health monitoring or self-test
+    Maintenance,        // Firmware update, configuration change, provisioning
+    _Count              // Number of reasons (for validation)
+};
+
 // Result of policy load operation
 enum class PolicyLoadResult : uint8_t {
     Ok,                 // Policy verified, persisted and activated
@@ -90,6 +104,7 @@ struct PolicyContext {
     PolicyActor actor;                  // Who is requesting the action
     PolicyOrigin origin;                // Where the request originated from
     PolicyIntent intent;                // Why the request is being made
+    uint16_t resource_id;               // Logical resource identifier (0 = any)
     bool backend_connected;             // Backend reachable
     bool physical_presence;             // Physical presence detected
     bool secure_boot_enabled;           // Secure boot enabled
@@ -112,6 +127,8 @@ struct PolicyAuditRecord {
     PolicyIntent intent;               // Why the action was taken
     system_state::SystemState state;   // System state at time of action
     PolicyDecisionSource source;       // Who made the decision
+    AuditReason reason;                // Why the action was attempted (optional context)
+    uint16_t resource_id;              // Logical resource identifier (0 = any)
 };
 
 // Raw policy blob received from backend
@@ -128,6 +145,7 @@ struct PolicyRule {
     PolicyIntent intent;              // Target intent (0xFF = any)
     PolicyAction action;              // Target action
     PolicyDecision decision;          // Allow or Deny
+    uint16_t resource_id;             // Logical resource (0 = any)
 };
 
 // Parsed policy structure
@@ -137,11 +155,13 @@ struct ParsedPolicy {
     // Minimum valid timestamp: Jan 1, 2020 00:00:00 UTC (Unix epoch)
     // Any non-zero expires_at below this is considered invalid/corrupted
     static constexpr uint32_t MinValidTimestamp = 1577836800;
-    // Current format version, future use
-    static constexpr uint32_t CurrentFormatVersion = 1;
+    // Current format version
+    static constexpr uint32_t CurrentFormatVersion = 3;
     // Binary format sizes, used for bounds checking
     static constexpr size_t DeviceIdSize = 16;
-    static constexpr size_t RuleSize = 6;
+    static constexpr size_t ResourceIdSize = 2;
+    static constexpr size_t RuleSize = 8;  // 6 enum fields + 2-byte resource_id
+    static constexpr uint16_t AnyResource = 0;
     static constexpr size_t MaxRules = 64;
     static constexpr size_t MaxSignatureSize = 72;
     static constexpr size_t MinHeaderSize =
@@ -157,7 +177,7 @@ struct ParsedPolicy {
     static constexpr uint8_t AnyOrigin = 0xFF;
     static constexpr uint8_t AnyIntent = 0xFF;
     // Header
-    uint32_t format_version;                   // Must be == 1 for now
+    uint32_t format_version;                   // Must be == 3
     uint32_t policy_version;                   // Monotonic (anti-rollback)
     uint8_t device_id[DeviceIdSize];
     uint32_t expires_at;                       // Unix timestamp, 0 = no expiry

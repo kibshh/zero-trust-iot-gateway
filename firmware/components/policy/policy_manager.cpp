@@ -41,22 +41,30 @@ bool check_expiration(uint32_t expires_at)
     return static_cast<uint32_t>(now) > expires_at;
 }
 
+// Check if a resource ID is the wildcard (0 = any)
+inline bool is_resource_any(uint16_t resource_id)
+{
+    return resource_id == ParsedPolicy::AnyResource;
+}
+
 // Record audit event for policy decision
 inline void audit_decision(PolicyDecision decision,
                            PolicyAction action,
                            const PolicyContext& ctx,
                            PolicyEngine& engine,
-                           PolicyDecisionSource source)
+                           PolicyDecisionSource source,
+                           AuditReason reason)
 {
-    PolicyAuditRecord record{
-        .action = action,
-        .decision = decision,
-        .actor = ctx.actor,
-        .origin = ctx.origin,
-        .intent = ctx.intent,
-        .state = ctx.state,
-        .source = source
-    };
+    PolicyAuditRecord record{};
+    record.action = action;
+    record.decision = decision;
+    record.actor = ctx.actor;
+    record.origin = ctx.origin;
+    record.intent = ctx.intent;
+    record.state = ctx.state;
+    record.source = source;
+    record.reason = reason;
+    record.resource_id = ctx.resource_id;
 
     engine.audit(record);
 }
@@ -310,7 +318,8 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
         return PolicyParseResult::SizeError;
     }
 
-    // Parse rules byte-by-byte (avoids struct padding issues)
+    // Parse rules (avoids struct padding issues)
+    // Each rule: 6 enum bytes + 2-byte resource_id
     for (uint16_t i = 0; i < out.rule_count; ++i) {
         // Validate all enum fields before assignment (fail-closed)
         // state, actor, origin, intent support wildcards (0xFF = any)
@@ -330,6 +339,7 @@ PolicyParseResult parse(const PolicyBlob& blob, ParsedPolicy& out)
         out.rules[i].intent = static_cast<PolicyIntent>(blob_ptr[3]);
         out.rules[i].action = static_cast<PolicyAction>(blob_ptr[4]);
         out.rules[i].decision = static_cast<PolicyDecision>(blob_ptr[5]);
+        out.rules[i].resource_id = zerotrust::utils::read_u16_le(blob_ptr + 6);
 
         blob_ptr += ParsedPolicy::RuleSize;
     }
@@ -442,21 +452,22 @@ PolicyLoadResult PolicyManager::load_policy(const PolicyBlob& policy_blob)
     return PolicyLoadResult::Ok;
 }
 
-PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext& ctx) const
+PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext& ctx,
+                                       AuditReason reason) const
 {
     PolicyDecision decision = PolicyDecision::Deny;
 
     // 1. No policy active - baseline only
     if (!policy_active_) {
         decision = baseline_engine_.evaluate(action, ctx);
-        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline, reason);
         return decision;
     }
 
     // 2. Policy expired at runtime - baseline fallback
     if (check_expiration(parsed_policy_.expires_at)) {
         decision = baseline_engine_.evaluate(action, ctx);
-        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+        audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline, reason);
         return decision;
     }
 
@@ -488,14 +499,20 @@ PolicyDecision PolicyManager::evaluate(PolicyAction action, const PolicyContext&
             continue;
         }
 
+        // Resource match: 0 = any, otherwise exact match
+        if (!is_resource_any(rule.resource_id) &&
+            rule.resource_id != ctx.resource_id) {
+            continue;
+        }
+
         decision = rule.decision;
-        audit_decision(decision, action, ctx, policy_engine_, PolicyDecisionSource::Policy);
+        audit_decision(decision, action, ctx, policy_engine_, PolicyDecisionSource::Policy, reason);
         return decision;
     }
 
     // 4. No matching rule - baseline fallback
     decision = baseline_engine_.evaluate(action, ctx);
-    audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline);
+    audit_decision(decision, action, ctx, baseline_engine_, PolicyDecisionSource::Baseline, reason);
     return decision;
 }
 

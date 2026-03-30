@@ -54,7 +54,8 @@ public:
     // Centralized policy-enforced action execution
     // Evaluates action against policy and triggers FSM events on violations
     policy::PolicyDecision authorize_action(policy::PolicyAction action,
-                                            const policy::PolicyContext& ctx);
+                                            const policy::PolicyContext& ctx,
+                                            policy::AuditReason reason = policy::AuditReason::None);
 
     // Called when device is in IdentityReady state
     bool try_register_device();

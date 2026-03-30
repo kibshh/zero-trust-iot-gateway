@@ -121,8 +121,10 @@ public:
     static constexpr const char* JsonKeyIntent = "intent";
     static constexpr const char* JsonKeyState = "state";
     static constexpr const char* JsonKeySource = "source";
+    static constexpr const char* JsonKeyReason = "reason";
+    static constexpr const char* JsonKeyResource = "resource";
     static constexpr const char* JsonKeySchemaVersion = "schema_version";
-    static constexpr uint8_t AuditSchemaVersion = 1;
+    static constexpr uint8_t AuditSchemaVersion = 3;
     static constexpr size_t MaxAuditRecordsPerFlush = 64;
 
     explicit BackendClient() : initialized_(false), config_{ nullptr, 0, nullptr, 0 } {}
