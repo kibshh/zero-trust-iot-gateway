@@ -1,0 +1,34 @@
+idf_component_register(
+    SRCS
+        "src/resource_registry.cpp"
+        "src/gate_common.cpp"
+        "src/zerotrust.cpp"
+        "src/ztg_gpio.cpp"
+        "src/ztg_i2c.cpp"
+        "src/ztg_spi.cpp"
+        "src/ztg_uart.cpp"
+        "src/ztg_network.cpp"
+        "src/ztg_storage.cpp"
+        "src/ztg_system.cpp"
+    INCLUDE_DIRS "include"
+    REQUIRES
+        system_state
+        identity
+        attestation
+        policy
+        systemcontroller
+        backend_client
+        wifi_manager
+        provisioning
+        time_sync
+        utils
+        esp_driver_gpio
+        driver
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        esp_http_client
+        freertos
+        esp_system
+)

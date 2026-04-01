@@ -101,9 +101,13 @@ public:
     // Check if time is synchronized
     bool is_time_synchronized() const;
 
-    // Returns true if the device currently considers the backend reachable.
+    // Returns the current FSM state.
+    zerotrust::system_state::SystemState get_state() const;
+
+    // Returns true if the backend is currently considered reachable.
+    // Becomes false after ConsecutiveFailureThreshold consecutive network-layer failures
+    // (Timeout/NetworkError). Becomes true again on any successful backend response.
     // Callers must use this to populate PolicyContext.backend_connected.
-    // Reflects FSM state: false only while in Degraded (entered via BackendUnavailable).
     bool is_backend_connected() const;
 
 private:
@@ -126,6 +130,7 @@ private:
     backend::BackendClient& backend_client_;
     policy::PolicyVerifier policy_verifier_;  // Reusable verifier instance
     uint8_t connectivity_failures_;           // Consecutive network-layer failure counter
+    bool backend_connected_;                  // True while backend is reachable
 };
 
 } // namespace zerotrust::system_controller

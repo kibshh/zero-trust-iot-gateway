@@ -43,6 +43,13 @@ struct OperationalIntervals {
     static constexpr uint32_t MaxBackoffFactor    = 4;     // Cap at 4x base interval
 };
 
+// Elapsed-since-last-run check that handles uint32_t wrap-around correctly.
+// Works because unsigned subtraction wraps: (5 - 0xFFFFFFF0) = 21.
+bool is_interval_elapsed(uint32_t tick, uint32_t last_tick, uint32_t interval)
+{
+    return (tick - last_tick) >= interval;
+}
+
 // Per-operation backoff state for periodic tasks.
 // On success the interval resets to base; on failure it doubles up to max.
 struct PeriodicTaskState {
@@ -72,13 +79,6 @@ struct PeriodicTaskState {
         interval = next;
     }
 };
-
-// Elapsed-since-last-run check that handles uint32_t wrap-around correctly.
-// Works because unsigned subtraction wraps: (5 - 0xFFFFFFF0) = 21.
-bool is_interval_elapsed(uint32_t tick, uint32_t last_tick, uint32_t interval)
-{
-    return (tick - last_tick) >= interval;
-}
 
 // Handles the truncated/version-mismatch cases by erasing and re-initialising.
 bool init_nvs()

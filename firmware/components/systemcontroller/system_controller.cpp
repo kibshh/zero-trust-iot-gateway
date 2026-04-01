@@ -31,7 +31,8 @@ SystemController::SystemController(system_state::SystemStateMachine& fsm,
       attestation_(attestation),
       policy_mgr_(policy_mgr),
       backend_client_(backend_client),
-      connectivity_failures_(0) {}
+      connectivity_failures_(0),
+      backend_connected_(false) {}
 
 void SystemController::on_boot()
 {
@@ -166,7 +167,8 @@ void SystemController::on_policy_result(policy::PolicyLoadResult result)
     switch (result) {
         case policy::PolicyLoadResult::Ok:
             // Policy verified, persisted and activated
-            // Device is now fully operational
+            // Boot sequence completed successfully - backend was reachable throughout
+            backend_connected_ = true;
             process_event_or_lock(fsm_, system_state::SystemEvent::PolicyLoaded);
             break;
 
@@ -652,9 +654,14 @@ bool SystemController::try_load_runtime_policy()
     return fsm_.get_state() == system_state::SystemState::Operational;
 }
 
+zerotrust::system_state::SystemState SystemController::get_state() const
+{
+    return fsm_.get_state();
+}
+
 bool SystemController::is_backend_connected() const
 {
-    return fsm_.get_state() != system_state::SystemState::Degraded;
+    return backend_connected_;
 }
 
 void SystemController::record_backend_result(backend::BackendStatus status)
@@ -667,13 +674,16 @@ void SystemController::record_backend_result(backend::BackendStatus status)
         if (connectivity_failures_ < ConsecutiveFailureThreshold) {
             ++connectivity_failures_;
         }
-        if (connectivity_failures_ >= ConsecutiveFailureThreshold &&
-            fsm_.get_state() == system_state::SystemState::Operational) {
-            process_event_or_lock(fsm_, system_state::SystemEvent::BackendUnavailable);
+        if (connectivity_failures_ >= ConsecutiveFailureThreshold) {
+            backend_connected_ = false;
+            if (fsm_.get_state() == system_state::SystemState::Operational) {
+                process_event_or_lock(fsm_, system_state::SystemEvent::BackendUnavailable);
+            }
         }
     } else {
         // Backend responded (Ok, Denied, InvalidResponse, etc.) - it is reachable
         connectivity_failures_ = 0;
+        backend_connected_ = true;
         if (fsm_.get_state() == system_state::SystemState::Degraded) {
             process_event_or_lock(fsm_, system_state::SystemEvent::BackendAvailable);
         }
